@@ -34,7 +34,7 @@ say "Detected package manager: $PKG"
 
 # --- inputs ----------------------------------------------------------------
 say "Configuration"
-read -rp "    API domain for this server (e.g. api.dharstec.com): " API_DOMAIN
+read -rp "    API domain for this server (e.g. mailer.dharstec.com): " API_DOMAIN
 [ -n "$API_DOMAIN" ] || die "An API domain is required — CloudFront is https, so this must be https too."
 
 read -rp "    Email for Let's Encrypt renewal notices: " LE_EMAIL

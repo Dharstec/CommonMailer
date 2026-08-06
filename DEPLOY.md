@@ -1,7 +1,7 @@
 # Deployment
 
 ```
-Customer static sites  ──POST──►  api.dharstec.com  (EC2: nginx → node → postgres)
+Customer static sites  ──POST──►  mailer.dharstec.com  (EC2: nginx → node → postgres)
                                           ▲
 You ──► CloudFront ──► S3 (admin panel) ──┘
 ```
@@ -21,7 +21,7 @@ the encryption keys, the first admin — creates itself on first boot.
 
 ### 2. Point DNS at it
 
-Create an **A record** for `api.dharstec.com` → your Elastic IP. Do this before
+Create an **A record** for `mailer.dharstec.com` → your Elastic IP. Do this before
 the next step, or the certificate request will fail.
 
 ### 3. Clone and run setup
@@ -233,7 +233,7 @@ sudo -u postgres psql -c 'ALTER ROLE commonmailer CREATEDB;'
 ```
 
 **certbot failed** — DNS is not pointing at the instance yet. Confirm with
-`dig +short api.dharstec.com`, then `sudo certbot --nginx -d api.dharstec.com`.
+`dig +short mailer.dharstec.com`, then `sudo certbot --nginx -d mailer.dharstec.com`.
 
 **Refreshing `/forms/2` shows an S3 error** — the CloudFront custom error
 responses in Part 2 step 2 are missing.
