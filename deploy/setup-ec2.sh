@@ -99,11 +99,35 @@ say "nginx"
 APP_PORT=4100
 CONF_DIR=/etc/nginx/conf.d
 mkdir -p "$CONF_DIR"
+
+# Snapshot the whole nginx config before adding ours. On a shared box this is
+# the difference between "restore the tarball" and "rebuild every site by hand".
+NGINX_BACKUP="/root/nginx-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+tar czf "$NGINX_BACKUP" -C /etc nginx 2>/dev/null && ok "nginx config backed up to $NGINX_BACKUP"
 sed -e "s|__API_DOMAIN__|$API_DOMAIN|g" -e "s|__APP_PORT__|$APP_PORT|g" \
     "$APP_DIR/deploy/nginx.conf.template" > "$CONF_DIR/commonmailer.conf"
 
-# Ubuntu ships a default site that would otherwise answer first.
-rm -f /etc/nginx/sites-enabled/default
+# sites-enabled is left completely alone.
+#
+# An earlier version of this script deleted sites-enabled/default, on the
+# assumption that it was only Ubuntu's placeholder page. On a box that already
+# serves other applications that is wrong: people routinely put real server
+# blocks in sites-available/default, and deleting the symlink takes those sites
+# down. Requests for those hostnames then match no server block, fall through to
+# whichever block loads first, and get served that block's TLS certificate —
+# which the browser rejects as ERR_CERT_COMMON_NAME_INVALID.
+#
+# Our block declares no default_server and answers only for its own server_name,
+# so existing sites keep working.
+if [ -e /etc/nginx/sites-enabled/default ]; then
+    OTHER_NAMES=$(grep -hE '^[[:space:]]*server_name' /etc/nginx/sites-enabled/default 2>/dev/null \
+                  | grep -vE 'server_name[[:space:]]+_;' || true)
+    if [ -n "$OTHER_NAMES" ]; then
+        warn "sites-enabled/default serves other sites — left untouched:"
+        echo "$OTHER_NAMES" | sed 's/^/        /'
+    fi
+fi
+
 nginx -t >/dev/null 2>&1 || die "nginx config test failed — run 'nginx -t' to see why."
 systemctl enable --now nginx >/dev/null 2>&1 || true
 systemctl reload nginx

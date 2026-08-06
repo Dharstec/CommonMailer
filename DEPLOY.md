@@ -240,3 +240,36 @@ responses in Part 2 step 2 are missing.
 
 **Customer's form gets 403** — their website is not in that form's **Allowed
 websites** (Security tab). Add www and non-www separately.
+
+---
+
+## Running alongside other sites on the same server
+
+This setup adds one file, `/etc/nginx/conf.d/commonmailer.conf`, and never edits
+or removes anything in `sites-enabled/`. Our server block declares no
+`default_server` and answers only for its own `server_name`.
+
+If an existing site starts showing **`ERR_CERT_COMMON_NAME_INVALID`**, its server
+block is no longer being matched, so nginx is falling through to another block
+and serving that block's certificate. Check what nginx actually has loaded:
+
+```bash
+ls -la /etc/nginx/sites-enabled/
+sudo nginx -T | grep -E "server_name|ssl_certificate " | sort -u
+```
+
+If a symlink is missing from `sites-enabled/`, put it back:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/<name> /etc/nginx/sites-enabled/<name>
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`setup-ec2.sh` snapshots the whole of `/etc/nginx` to
+`/root/nginx-backup-<timestamp>.tar.gz` before touching anything, so a full
+restore is:
+
+```bash
+sudo tar xzf /root/nginx-backup-<timestamp>.tar.gz -C /etc
+sudo nginx -t && sudo systemctl reload nginx
+```
