@@ -214,6 +214,25 @@ you with rows you cannot decrypt.
 
 ---
 
+## Lost the admin password
+
+The first-boot password is written to `MailBackend/FIRST_LOGIN.txt`. If that file
+is gone, reset it — this also creates the account if the email does not exist:
+
+```bash
+cd ~/CommonMailer/MailBackend
+
+# generate a new password
+node scripts/reset-admin-password.js gokuldsp01@gmail.com
+
+# or set one yourself
+node scripts/reset-admin-password.js gokuldsp01@gmail.com 'MyNewPassword123'
+```
+
+Resetting logs out every existing session.
+
+---
+
 ## Troubleshooting
 
 **Panel loads but every request fails** — `FRONTEND_ORIGIN` on the server does
