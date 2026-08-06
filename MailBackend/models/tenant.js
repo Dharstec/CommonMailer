@@ -1,6 +1,7 @@
 const POSTGRESQLService = require('../helpers/POSTGRES');
 const { encrypt } = require('../helpers/crypto');
 const mailer = require('../helpers/mailer');
+const { explainSmtpError } = require('../helpers/smtpErrors');
 const logger = require('../helpers/logger');
 
 const handleServerError = (res, error, where) => {
@@ -148,6 +149,14 @@ const saveSmtp = async (req, res) => {
     }
 };
 
+/** Reads the host so the error explanation can be provider-specific. */
+async function smtpHostOf(tenantId) {
+    const rows = await POSTGRESQLService.PostgresAny(
+        `SELECT host FROM tenant_smtp WHERE tenant_id = $1`, [tenantId]
+    );
+    return rows.length ? rows[0].host : '';
+}
+
 /** Opens a real SMTP connection and authenticates, without sending anything. */
 const testSmtp = async (req, res) => {
     try {
@@ -155,7 +164,8 @@ const testSmtp = async (req, res) => {
         res.json({ status: 'success', message: 'SMTP connection successful.' });
     } catch (error) {
         logger.warn('SMTP test failed', { tenantId: req.params.id, error: error.message });
-        res.status(400).json({ status: 'error', message: `SMTP test failed: ${error.message}` });
+        const host = await smtpHostOf(Number(req.params.id)).catch(() => '');
+        res.status(400).json({ status: 'error', message: explainSmtpError(error, host) });
     }
 };
 
@@ -178,7 +188,8 @@ const sendTestMail = async (req, res) => {
         res.json({ status: 'success', message: `Test email sent to ${to}.` });
     } catch (error) {
         logger.warn('Test mail failed', { tenantId: req.params.id, error: error.message });
-        res.status(400).json({ status: 'error', message: `Could not send: ${error.message}` });
+        const host = await smtpHostOf(Number(req.params.id)).catch(() => '');
+        res.status(400).json({ status: 'error', message: explainSmtpError(error, host) });
     }
 };
 

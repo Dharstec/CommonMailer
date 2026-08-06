@@ -46,7 +46,10 @@ const smtpSchema = Joi.object({
     secure: Joi.boolean().default(false),
     username: Joi.string().trim().max(200).required().label('SMTP username'),
     // Optional on update: blank means "keep the stored password".
-    password: Joi.string().max(300).allow('', null).label('SMTP password'),
+    // Trimmed because app passwords are copied out of a provider's UI and
+    // routinely arrive with a leading or trailing space, which the server then
+    // rejects as a wrong password.
+    password: Joi.string().trim().max(300).allow('', null).label('SMTP password'),
     from_name: noHtml().trim().max(100).required().label('From name'),
     from_email: Joi.string().trim().email({ tlds: { allow: false } }).required().label('From email'),
     reply_to: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).label('Reply-To'),

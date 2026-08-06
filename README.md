@@ -352,8 +352,11 @@ in **Allowed websites**. Include `https://`, and add www and non-www separately.
 **`400` `"purpose" is not allowed`** — you posted a key that is not a field on
 *that* form. Check you are using the right form key.
 
-**SMTP test fails on Gmail** — you need an App Password (2FA must be on), not the
-account password.
+**SMTP test fails on Gmail (`535-5.7.8`)** — Gmail has not accepted account
+passwords for SMTP since 2022. Turn on 2-Step Verification, create an App
+Password at myaccount.google.com/apppasswords, and paste the 16 characters with
+the spaces removed. The username must be the full email address, and "From
+email" must match it.
 
 **Mail sends but lands in spam** — `from_email` must be a real mailbox on a domain
 whose SPF record authorises this SMTP server.
