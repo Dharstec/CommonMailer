@@ -4,13 +4,17 @@
  *   node scripts/reset-admin-password.js you@example.com
  *   node scripts/reset-admin-password.js you@example.com 'MyNewPassword123'
  *
- * With no password given, a strong one is generated and printed. Run it from
- * the MailBackend directory so it picks up .env.
+ * With no password given, a strong one is generated and printed.
  *
  * Also creates the account if that email does not exist yet, which covers the
  * case where the first-boot admin was never captured.
  */
-require('dotenv').config();
+const path = require('path');
+
+// .env is resolved relative to this file, not the shell's working directory —
+// running it from the repo root would otherwise load no config at all and fail
+// against a default localhost database instead of the real one.
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');

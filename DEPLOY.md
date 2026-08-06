@@ -48,7 +48,7 @@ requests the HTTPS certificate.
 This is the only file you write by hand. It is gitignored and never committed.
 
 ```bash
-cd ~/CommonMailer/MailBackend
+cd ~/CommonMailer/MailBackend   # the script lives here
 cp .env.example .env
 nano .env
 ```
@@ -220,7 +220,7 @@ The first-boot password is written to `MailBackend/FIRST_LOGIN.txt`. If that fil
 is gone, reset it — this also creates the account if the email does not exist:
 
 ```bash
-cd ~/CommonMailer/MailBackend
+cd ~/CommonMailer/MailBackend   # the script lives here
 
 # generate a new password
 node scripts/reset-admin-password.js gokuldsp01@gmail.com
