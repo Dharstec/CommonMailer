@@ -39,7 +39,7 @@ source "$CONFIG"
 PROD_ENV="$FRONTEND/src/environments/environment.prod.ts"
 if grep -q "yourdomain.com\|localhost" "$PROD_ENV"; then
     die "$PROD_ENV still points at a placeholder.
-  Set apiUrl to your live API, e.g. https://api.dharstec.com/api"
+  Set apiUrl to your live API, e.g. https://mailer.dharstec.com/api"
 fi
 ok "production API URL: $(grep apiUrl "$PROD_ENV" | cut -d"'" -f2)"
 

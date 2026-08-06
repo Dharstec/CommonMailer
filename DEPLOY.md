@@ -57,7 +57,7 @@ Set exactly these three:
 
 ```ini
 POSTGRESQL_PASSWORD=the-password-from-step-3
-PUBLIC_BASE_URL=https://api.dharstec.com
+PUBLIC_BASE_URL=https://mailer.dharstec.com
 FRONTEND_ORIGIN=https://d111111abcdef8.cloudfront.net
 ```
 
@@ -88,7 +88,7 @@ First boot does all of this on its own:
 Check it:
 
 ```bash
-curl https://api.dharstec.com/health
+curl https://mailer.dharstec.com/health
 ```
 
 > ⚠️ **Back up `MailBackend/.secrets.json`.** It holds `ENCRYPTION_KEY`, which
@@ -128,8 +128,8 @@ page but the root gives an S3 error:
 Edit `MailFrontend/src/environments/environment.prod.ts`:
 
 ```ts
-apiUrl: 'https://api.dharstec.com/api',
-publicBaseUrl: 'https://api.dharstec.com'
+apiUrl: 'https://mailer.dharstec.com/api',
+publicBaseUrl: 'https://mailer.dharstec.com'
 ```
 
 Commit and push that — it is not a secret.

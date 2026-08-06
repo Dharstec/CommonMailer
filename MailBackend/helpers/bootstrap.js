@@ -48,7 +48,7 @@ const DEFAULTS = {
  */
 const REQUIRED_IN_PRODUCTION = [
     ['POSTGRESQL_PASSWORD', 'the database password you chose during setup'],
-    ['PUBLIC_BASE_URL', 'the public URL of this API, e.g. https://api.dharstec.com'],
+    ['PUBLIC_BASE_URL', 'the public URL of this API, e.g. https://mailer.dharstec.com'],
     ['FRONTEND_ORIGIN', 'the admin panel URL, e.g. https://d1234.cloudfront.net']
 ];
 
