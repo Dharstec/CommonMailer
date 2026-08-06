@@ -265,6 +265,21 @@ sudo ln -s /etc/nginx/sites-available/<name> /etc/nginx/sites-enabled/<name>
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+### `duplicate listen options for [::]:443`
+
+`ipv6only` may be set only once per address:port across the whole nginx config.
+If certbot added an IPv6 listener to our block and another site already had one,
+nginx refuses to load anything. Strip it from our file — the other site had it
+first:
+
+```bash
+sudo sed -i 's/ ipv6only=on;/;/' /etc/nginx/conf.d/commonmailer.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+The template no longer declares an IPv6 listener, so certbot will not add one on
+a fresh install.
+
 `setup-ec2.sh` snapshots the whole of `/etc/nginx` to
 `/root/nginx-backup-<timestamp>.tar.gz` before touching anything, so a full
 restore is:

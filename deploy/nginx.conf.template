@@ -6,8 +6,18 @@
 # redirect, so there is no TLS config here to go stale.
 
 server {
+    # IPv4 only, deliberately.
+    #
+    # If an IPv6 listener is declared here, certbot mirrors it as
+    #   listen [::]:443 ssl ipv6only=on;
+    # and `ipv6only` may be set only once per address:port for the whole nginx
+    # config. On a server that already hosts other sites, whichever config
+    # already owns that option makes ours fail with "duplicate listen options",
+    # and nginx then refuses to load *any* config — taking every site down.
+    #
+    # Browsers reach an IPv4 API perfectly well. If this box is ever IPv6-only,
+    # add the listener to exactly one config and remove it from the others.
     listen 80;
-    listen [::]:80;
     server_name __API_DOMAIN__;
 
     # Keep the real client IP intact: the per-IP rate limit and the submission
