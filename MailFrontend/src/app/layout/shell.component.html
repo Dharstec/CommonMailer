@@ -1,0 +1,71 @@
+<div class="min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="fixed inset-y-0 left-0 z-40 w-60 bg-slate-900 text-slate-300 flex flex-col
+                transition-transform lg:translate-x-0"
+         [class.-translate-x-full]="!menuOpen">
+    <div class="h-16 flex items-center gap-2.5 px-5 border-b border-slate-800">
+      <div class="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white shrink-0">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <span class="text-white font-semibold tracking-tight">CommonMailer</span>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <a *ngFor="let link of links" [routerLink]="link.path" routerLinkActive="bg-brand-600 text-white"
+         (click)="menuOpen = false"
+         class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 hover:text-white transition">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="link.icon"/>
+        </svg>
+        {{ link.label }}
+      </a>
+    </nav>
+
+    <div class="p-3 border-t border-slate-800 text-xs text-slate-500">
+      Add a customer &rarr; build a form &rarr; paste the snippet. No deploy.
+    </div>
+  </aside>
+
+  <div *ngIf="menuOpen" class="fixed inset-0 z-30 bg-slate-900/50 lg:hidden" (click)="menuOpen = false"></div>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col lg:ml-60 min-w-0">
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20">
+      <button type="button" class="lg:hidden p-2 -ml-2 text-slate-600" (click)="menuOpen = !menuOpen">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+
+      <div class="flex-1"></div>
+
+      <div class="relative">
+        <button type="button" class="flex items-center gap-2.5 text-sm" (click)="profileOpen = !profileOpen">
+          <span class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 font-semibold flex items-center justify-center">
+            {{ (auth.currentUser?.name || '?').charAt(0).toUpperCase() }}
+          </span>
+          <span class="hidden sm:block font-medium text-slate-700">{{ auth.currentUser?.name }}</span>
+        </button>
+
+        <div *ngIf="profileOpen" class="absolute right-0 mt-2 w-56 card p-1.5 z-30">
+          <div class="px-3 py-2 border-b border-slate-100">
+            <p class="text-sm font-medium text-slate-900 truncate">{{ auth.currentUser?.name }}</p>
+            <p class="text-xs text-slate-500 truncate">{{ auth.currentUser?.email }}</p>
+          </div>
+          <a routerLink="/change-password" (click)="profileOpen = false"
+             class="block px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-md">Change password</a>
+          <button type="button" (click)="logout()"
+                  class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md">Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 min-w-0">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>

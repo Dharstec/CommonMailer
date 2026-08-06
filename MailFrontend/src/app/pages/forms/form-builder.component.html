@@ -1,0 +1,533 @@
+<div class="max-w-5xl mx-auto space-y-5" [formGroup]="form">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <a routerLink="/forms" class="text-slate-400 hover:text-slate-600 shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-2xl font-bold text-slate-900 truncate">{{ isNew ? 'New form' : form.value.name }}</h1>
+    </div>
+    <button type="button" class="btn-primary" [disabled]="saving" (click)="save()">
+      {{ saving ? 'Saving...' : (isNew ? 'Create form' : 'Save changes') }}
+    </button>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <ng-container *ngIf="!loading">
+    <!-- Tabs -->
+    <div class="border-b border-slate-200 flex gap-1 overflow-x-auto">
+      <button type="button" *ngFor="let t of ['settings','fields','security','templates','api']"
+              (click)="tab = $any(t)"
+              class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px capitalize whitespace-nowrap transition"
+              [ngClass]="tab === t ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'">
+        {{ t }}
+        <span *ngIf="t === 'fields'" class="ml-1 text-xs text-slate-400">({{ fields.length }})</span>
+      </button>
+    </div>
+
+    <!-- ===================================================== SETTINGS ==== -->
+    <div *ngIf="tab === 'settings'" class="space-y-5">
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Basics</h2></div>
+        <div class="card-body grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label">Customer <span class="text-red-500">*</span></label>
+            <select class="input" formControlName="tenant_id"
+                    [class.input-err]="form.controls.tenant_id.touched && form.controls.tenant_id.invalid">
+              <option [ngValue]="null">Choose a customer</option>
+              <option *ngFor="let t of tenants" [ngValue]="t.id">{{ t.name }}</option>
+            </select>
+            <p class="err" *ngIf="form.controls.tenant_id.touched && form.controls.tenant_id.invalid">
+              Choose which customer this form belongs to.
+            </p>
+          </div>
+
+          <div>
+            <label class="label">Form name <span class="text-red-500">*</span></label>
+            <input class="input" formControlName="name" (input)="onNameChange()" placeholder="Contact Form"
+                   [class.input-err]="form.controls.name.touched && form.controls.name.invalid"/>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="label">Form key <span class="text-red-500">*</span></label>
+            <input class="input font-mono" formControlName="form_key" placeholder="dharstec-contact"
+                   [class.input-err]="form.controls.form_key.touched && form.controls.form_key.invalid"/>
+            <p class="hint">Goes into the API URL. Changing it breaks any site already posting to the old URL.</p>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="label">Send enquiries to <span class="text-red-500">*</span></label>
+            <textarea class="input font-mono text-xs" rows="2" formControlName="recipients_text"
+                      placeholder="info@dharstec.com&#10;sales@dharstec.com"
+                      [class.input-err]="form.controls.recipients_text.touched && form.controls.recipients_text.invalid"></textarea>
+            <p class="hint">One email per line.</p>
+          </div>
+
+          <div>
+            <label class="label">CC</label>
+            <textarea class="input font-mono text-xs" rows="2" formControlName="cc_text" placeholder="Optional"></textarea>
+          </div>
+          <div>
+            <label class="label">BCC</label>
+            <textarea class="input font-mono text-xs" rows="2" formControlName="bcc_text" placeholder="Optional"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Response</h2></div>
+        <div class="card-body">
+          <label class="label">Success message</label>
+          <input class="input" formControlName="success_message"/>
+          <p class="hint">
+            Returned as <code>message</code> in the JSON response, so the customer's page can show it
+            after a successful POST.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Auto-reply to the visitor</h2></div>
+        <div class="card-body space-y-4">
+          <label class="flex items-center gap-2.5 text-sm text-slate-700">
+            <input type="checkbox" formControlName="autoreply_enabled" class="rounded border-slate-300"/>
+            Send an automatic acknowledgement to the person who submitted the form
+          </label>
+          <div *ngIf="form.value.autoreply_enabled">
+            <label class="label">Reply to which field? <span class="text-red-500">*</span></label>
+            <select class="input max-w-sm" formControlName="autoreply_to_field">
+              <option value="">Choose an email field</option>
+              <option *ngFor="let f of emailFields" [value]="f.value.field_key">
+                {{ f.value.label }} ({{ f.value.field_key }})
+              </option>
+            </select>
+            <p class="hint" *ngIf="emailFields.length === 0">
+              Add a field of type "Email address" first — there is nowhere to send the reply.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Status</h2></div>
+        <div class="card-body space-y-3">
+          <label class="flex items-center gap-2.5 text-sm text-slate-700">
+            <input type="checkbox" formControlName="is_active" class="rounded border-slate-300"/>
+            Live — when off, the form stops loading and stops accepting submissions
+          </label>
+          <label class="flex items-center gap-2.5 text-sm text-slate-700">
+            <input type="checkbox" formControlName="store_submissions" class="rounded border-slate-300"/>
+            Store submissions in the database (needed for the enquiry log, resend and CSV export)
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">API endpoint</h2></div>
+        <div class="card-body">
+          <p class="text-sm text-slate-600 mb-3">POST the form data here from the customer's website.</p>
+          <div class="flex gap-2">
+            <input class="input font-mono text-xs" readonly [value]="submitUrl"/>
+            <button type="button" class="btn-ghost shrink-0" (click)="copy(submitUrl, 'URL')">Copy</button>
+          </div>
+          <button type="button" class="btn-ghost btn-sm mt-3" (click)="tab = 'api'">
+            See the request body and ready-made HTML &rarr;
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================= FIELDS ==== -->
+    <div *ngIf="tab === 'fields'" class="space-y-4">
+      <div class="card card-body flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="text-sm font-medium text-slate-700">Start from a preset</p>
+          <div class="flex flex-wrap gap-2 mt-2">
+            <button *ngFor="let p of presetNames" type="button" class="btn-ghost btn-sm capitalize"
+                    (click)="applyPreset(p)">{{ p }}</button>
+          </div>
+          <p class="hint">Replaces the current field list.</p>
+        </div>
+        <button type="button" class="btn-primary" (click)="addField()">Add field</button>
+      </div>
+
+      <div *ngIf="fields.length === 0" class="card p-10 text-center text-sm text-slate-500">
+        No fields yet. Pick a preset above or add a field.
+      </div>
+
+      <div formArrayName="fields" class="space-y-3">
+        <div *ngFor="let group of fields.controls; let i = index" [formGroupName]="i" class="card">
+
+          <!-- Row header -->
+          <div class="px-4 py-3 flex items-center gap-3">
+            <div class="flex flex-col gap-0.5 shrink-0">
+              <button type="button" class="text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                      [disabled]="i === 0" (click)="moveField(i, -1)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+                </svg>
+              </button>
+              <button type="button" class="text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                      [disabled]="i === fields.length - 1" (click)="moveField(i, 1)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+            </div>
+
+            <button type="button" class="flex-1 text-left min-w-0"
+                    (click)="group.patchValue({ expanded: !group.value.expanded })">
+              <span class="font-medium text-slate-900">{{ group.value.label || 'Untitled field' }}</span>
+              <span *ngIf="group.value.is_required" class="text-red-500 ml-0.5">*</span>
+              <span class="ml-2 text-xs text-slate-500 font-mono">{{ group.value.field_key }}</span>
+              <span class="ml-2 badge-mute">{{ typeMeta($any(group.value.field_type))?.label }}</span>
+              <span *ngIf="group.invalid" class="ml-2 badge-err">needs attention</span>
+            </button>
+
+            <span *ngIf="isEmailField($any(group))" class="badge-mute shrink-0" title="Required on every form">Locked</span>
+            <button *ngIf="!isEmailField($any(group))" type="button" class="btn-danger btn-sm shrink-0"
+                    (click)="removeField(i)">Remove</button>
+          </div>
+
+          <!-- Expanded editor -->
+          <div *ngIf="group.value.expanded" class="px-4 pb-4 pt-1 border-t border-slate-100 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label">Label <span class="text-red-500">*</span></label>
+              <input class="input" formControlName="label" (input)="onFieldLabel($any(group))"
+                     [class.input-err]="group.get('label')?.touched && group.get('label')?.invalid"/>
+            </div>
+
+            <div>
+              <label class="label">Field key <span class="text-red-500">*</span></label>
+              <input class="input font-mono" formControlName="field_key"
+                     [readonly]="isEmailField($any(group))"
+                     [class.bg-slate-100]="isEmailField($any(group))"
+                     [class.input-err]="group.get('field_key')?.touched && group.get('field_key')?.invalid"/>
+              <p class="hint">This is the JSON key you POST. Used in templates as <code>{{ token(group.value.field_key) }}</code></p>
+            </div>
+
+            <div>
+              <label class="label">Type</label>
+              <select class="input" formControlName="field_type" [attr.disabled]="isEmailField($any(group)) ? '' : null">
+                <option *ngFor="let t of fieldTypes" [value]="t.value">{{ t.label }}</option>
+              </select>
+              <p class="hint" *ngIf="isEmailField($any(group))">Fixed — every form must carry an email address.</p>
+            </div>
+
+            <div>
+              <label class="label">Width</label>
+              <select class="input" formControlName="col_span">
+                <option [ngValue]="1">1 column</option>
+                <option [ngValue]="2">2 columns</option>
+                <option [ngValue]="3">Full width</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="label">Placeholder</label>
+              <input class="input" formControlName="placeholder"/>
+            </div>
+
+            <div>
+              <label class="label">Help text</label>
+              <input class="input" formControlName="help_text"/>
+            </div>
+
+            <!-- Options for select / radio / checkbox group -->
+            <div class="sm:col-span-2" *ngIf="hasOptions($any(group))">
+              <label class="label">Options</label>
+              <div formArrayName="options" class="space-y-2">
+                <div *ngFor="let opt of optionsOf($any(group)).controls; let oi = index" [formGroupName]="oi"
+                     class="flex gap-2">
+                  <input class="input flex-1" formControlName="label" placeholder="Shown to visitor"
+                         (input)="onOptionLabel($any(opt))"/>
+                  <input class="input flex-1 font-mono text-xs" formControlName="value" placeholder="stored value"/>
+                  <button type="button" class="btn-ghost btn-sm shrink-0"
+                          (click)="removeOption($any(group), oi)">&times;</button>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost btn-sm mt-2" (click)="addOption($any(group))">Add option</button>
+              <p class="hint">
+                Submissions are rejected unless the value is one of these — a tampered dropdown cannot slip through.
+              </p>
+            </div>
+
+            <div *ngIf="group.value.field_type === 'textarea'">
+              <label class="label">Rows</label>
+              <input class="input" type="number" formControlName="textarea_rows" min="2" max="20"/>
+            </div>
+
+            <div *ngIf="['text','textarea'].includes(group.value.field_type)">
+              <label class="label">Max length</label>
+              <input class="input" type="number" formControlName="max_length" placeholder="2000"/>
+            </div>
+
+            <div *ngIf="group.value.field_type === 'number'" class="grid grid-cols-2 gap-3 sm:col-span-2">
+              <div>
+                <label class="label">Minimum value</label>
+                <input class="input" type="number" formControlName="min_value"/>
+              </div>
+              <div>
+                <label class="label">Maximum value</label>
+                <input class="input" type="number" formControlName="max_value"/>
+              </div>
+            </div>
+
+            <div class="sm:col-span-2 flex flex-wrap gap-5 pt-1">
+              <label class="flex items-center gap-2 text-sm"
+                     [class.text-slate-400]="isEmailField($any(group))" [class.text-slate-700]="!isEmailField($any(group))">
+                <input type="checkbox" formControlName="is_required" class="rounded border-slate-300"
+                       [attr.disabled]="isEmailField($any(group)) ? '' : null"/>
+                Required{{ isEmailField($any(group)) ? ' (locked)' : '' }}
+              </label>
+              <label class="flex items-center gap-2 text-sm"
+                     [class.text-slate-400]="isEmailField($any(group))" [class.text-slate-700]="!isEmailField($any(group))">
+                <input type="checkbox" formControlName="is_active" class="rounded border-slate-300"
+                       [attr.disabled]="isEmailField($any(group)) ? '' : null"/>
+                Active
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================== SECURITY ==== -->
+    <div *ngIf="tab === 'security'" class="space-y-5">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="font-semibold text-slate-900">Allowed websites</h2>
+            <p class="text-xs text-slate-500 mt-0.5">The single most important setting on this page.</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <textarea class="input font-mono text-xs" rows="4" formControlName="origins_text"
+                    placeholder="https://dharstec.com&#10;https://www.dharstec.com&#10;http://localhost:4200"></textarea>
+          <p class="hint">
+            One origin per line, including <code>https://</code>. Only these sites can load or submit this form —
+            anyone else gets a 403. Use <code>https://*.example.com</code> to cover subdomains.
+            Remember to add both the www and non-www address if the site answers on both.
+          </p>
+          <div *ngIf="!form.value.origins_text" class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
+            With no origins listed, every browser submission is blocked. Add the customer's website before going live.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Bot protection</h2></div>
+        <div class="card-body grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label">Honeypot field name</label>
+            <input class="input font-mono" formControlName="honeypot_field"/>
+            <p class="hint">A hidden field real visitors never see. If it arrives filled, the submission is dropped.</p>
+          </div>
+
+          <div>
+            <label class="label">Minimum seconds before submit</label>
+            <input class="input" type="number" formControlName="min_submit_seconds" min="0" max="120"/>
+            <p class="hint">Scripts post instantly; people take a few seconds. 3 is a safe default.</p>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="label">Maximum submissions per hour, per IP</label>
+            <input class="input max-w-xs" type="number" formControlName="max_per_hour_per_ip" min="0" max="1000"/>
+            <p class="hint">0 disables this check. Counted in the database, so it holds across restarts and servers.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Google reCAPTCHA v3</h2></div>
+        <div class="card-body space-y-4">
+          <label class="flex items-center gap-2.5 text-sm text-slate-700">
+            <input type="checkbox" formControlName="recaptcha_enabled" class="rounded border-slate-300"/>
+            Enable reCAPTCHA v3 for this form
+          </label>
+
+          <div *ngIf="form.value.recaptcha_enabled" class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label">Site key <span class="text-red-500">*</span></label>
+              <input class="input font-mono text-xs" formControlName="recaptcha_site_key"/>
+              <p class="hint">Public — the widget loads it in the visitor's browser.</p>
+            </div>
+            <div>
+              <label class="label">Secret key</label>
+              <input class="input font-mono text-xs" type="password" formControlName="recaptcha_secret"
+                     placeholder="Leave blank to keep the stored secret"/>
+              <p class="hint">Encrypted before storage and never sent back to this page.</p>
+            </div>
+            <div>
+              <label class="label">Minimum score ({{ form.value.recaptcha_min_score }})</label>
+              <input type="range" min="0" max="1" step="0.1" formControlName="recaptcha_min_score" class="w-full"/>
+              <p class="hint">0.5 is Google's default. Higher is stricter and rejects more real people.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================== API ==== -->
+    <div *ngIf="tab === 'api'" class="space-y-5">
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">1. Endpoint</h2></div>
+        <div class="card-body">
+          <div class="flex gap-2">
+            <input class="input font-mono text-xs" readonly [value]="submitUrl"/>
+            <button type="button" class="btn-ghost shrink-0" (click)="copy(submitUrl, 'URL')">Copy</button>
+          </div>
+          <p class="hint mt-2">Method <code>POST</code> &middot; header <code>Content-Type: application/json</code></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="font-semibold text-slate-900">2. Request body</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Built from the fields on this form. Updates as you edit them.</p>
+          </div>
+          <button type="button" class="btn-ghost btn-sm" (click)="copy(sampleBody, 'Body')">Copy</button>
+        </div>
+        <div class="card-body">
+          <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{{ sampleBody }}</code></pre>
+          <p class="hint mt-2">
+            Keys must match the field keys exactly. Anything not defined on this form is rejected,
+            and <code>email</code> is always required.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="font-semibold text-slate-900">3. Ready-made HTML</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Paste into the customer's static site and restyle as you like.</p>
+          </div>
+          <button type="button" class="btn-ghost btn-sm" (click)="copy(sampleHtml, 'HTML')">Copy</button>
+        </div>
+        <div class="card-body">
+          <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{{ sampleHtml }}</code></pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">4. What comes back</h2></div>
+        <div class="card-body space-y-4 text-sm">
+          <div>
+            <p class="font-medium text-slate-700 mb-1.5">Success &mdash; <code>200</code></p>
+            <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-x-auto"><code>{{ successSample }}</code></pre>
+          </div>
+          <div>
+            <p class="font-medium text-slate-700 mb-1.5">Bad data &mdash; <code>400</code></p>
+            <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-x-auto"><code>{{ errorSample }}</code></pre>
+            <p class="hint">Show <code>errors[]</code> next to the matching input on the page.</p>
+          </div>
+          <div>
+            <p class="font-medium text-slate-700 mb-1.5">Website not allowed &mdash; <code>403</code></p>
+            <p class="text-slate-600">
+              Add the customer's website under <span class="font-medium">Security &rarr; Allowed websites</span>.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800"
+           *ngIf="!form.value.origins_text">
+        No website is allowed yet, so browser submissions will be refused. Add the customer's site under
+        <span class="font-medium">Security &rarr; Allowed websites</span> before going live.
+      </div>
+    </div>
+
+    <!-- ==================================================== TEMPLATES ==== -->
+    <div *ngIf="tab === 'templates'" class="space-y-5">
+      <div *ngIf="isNew" class="card p-8 text-center text-sm text-slate-500">
+        Create the form first. Default templates are generated automatically and you can edit them here.
+      </div>
+
+      <ng-container *ngIf="!isNew">
+        <div class="flex gap-2">
+          <button type="button" class="btn-ghost btn-sm"
+                  [class.!bg-brand-600]="activeTemplate?.template_type === 'admin'"
+                  [class.!text-white]="activeTemplate?.template_type === 'admin'"
+                  (click)="selectTemplate('admin')">Notification to customer</button>
+          <button type="button" class="btn-ghost btn-sm"
+                  [class.!bg-brand-600]="activeTemplate?.template_type === 'autoreply'"
+                  [class.!text-white]="activeTemplate?.template_type === 'autoreply'"
+                  (click)="selectTemplate('autoreply')">Auto-reply to visitor</button>
+        </div>
+
+        <div class="card" *ngIf="activeTemplate">
+          <div class="card-body space-y-4">
+            <div>
+              <label class="label">Subject</label>
+              <input class="input" [(ngModel)]="activeTemplate.subject" [ngModelOptions]="{ standalone: true }"/>
+            </div>
+
+            <div>
+              <label class="label">HTML body</label>
+              <textarea class="input font-mono text-xs" rows="12"
+                        [(ngModel)]="activeTemplate.html_body" [ngModelOptions]="{ standalone: true }"></textarea>
+            </div>
+
+            <div>
+              <label class="label">Plain text body</label>
+              <textarea class="input font-mono text-xs" rows="5"
+                        [(ngModel)]="activeTemplate.text_body" [ngModelOptions]="{ standalone: true }"></textarea>
+              <p class="hint">Sent alongside the HTML for mail clients that block it.</p>
+            </div>
+
+            <div>
+              <p class="label">Click to insert a placeholder</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" class="btn-ghost btn-sm font-mono" (click)="insertPlaceholder('#all_fields')">
+                  {{ allFieldsToken }}
+                </button>
+                <button type="button" class="btn-ghost btn-sm font-mono"
+                        *ngFor="let f of fields.controls" (click)="insertPlaceholder(f.value.field_key)">
+                  {{ token(f.value.field_key) }}
+                </button>
+                <button type="button" class="btn-ghost btn-sm font-mono" (click)="insertPlaceholder('_date')">{{ token('_date') }}</button>
+                <button type="button" class="btn-ghost btn-sm font-mono" (click)="insertPlaceholder('_ip')">{{ token('_ip') }}</button>
+                <button type="button" class="btn-ghost btn-sm font-mono" (click)="insertPlaceholder('_tenant_name')">{{ token('_tenant_name') }}</button>
+              </div>
+              <p class="hint">
+                <code>{{ allFieldsToken }}</code> renders a table of everything submitted, so the email
+                stays correct when you add or remove fields later.
+                Every value is HTML-escaped before it goes into the mail.
+              </p>
+            </div>
+          </div>
+
+          <div class="px-5 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn-ghost" (click)="previewTemplate()">Preview</button>
+              <input class="input w-52" placeholder="you@example.com"
+                     [(ngModel)]="templateTestEmail" [ngModelOptions]="{ standalone: true }"/>
+              <button type="button" class="btn-ghost" (click)="sendTemplateTest()">Send test</button>
+            </div>
+            <button type="button" class="btn-primary" [disabled]="savingTemplate" (click)="saveTemplate()">
+              {{ savingTemplate ? 'Saving...' : 'Save template' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="card" *ngIf="previewHtml">
+          <div class="card-head">
+            <div class="min-w-0">
+              <h3 class="font-semibold text-slate-900">Preview</h3>
+              <p class="text-xs text-slate-500 truncate mt-0.5">Subject: {{ previewSubject }}</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <iframe [srcdoc]="previewHtml" class="w-full h-96 rounded-lg border border-slate-200 bg-white"
+                    sandbox=""></iframe>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </ng-container>
+</div>

@@ -1,0 +1,82 @@
+<div class="max-w-7xl mx-auto space-y-6">
+
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
+    <p class="text-sm text-slate-500 mt-1">Last 30 days across all customers.</p>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <ng-container *ngIf="!loading && stats">
+    <div class="grid gap-4 grid-cols-2 lg:grid-cols-5">
+      <div class="card card-body">
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Customers</p>
+        <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.active_tenants }}</p>
+      </div>
+      <div class="card card-body">
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Active forms</p>
+        <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.active_forms }}</p>
+      </div>
+      <div class="card card-body">
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Enquiries</p>
+        <p class="text-3xl font-bold text-brand-600 mt-2">{{ stats.submissions_30d }}</p>
+      </div>
+      <div class="card card-body">
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Failed mail</p>
+        <p class="text-3xl font-bold mt-2" [class.text-red-600]="stats.failed_30d > 0"
+           [class.text-slate-900]="stats.failed_30d === 0">{{ stats.failed_30d }}</p>
+      </div>
+      <div class="card card-body">
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Spam blocked</p>
+        <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.spam_30d }}</p>
+      </div>
+    </div>
+
+    <div *ngIf="stats.failed_30d > 0" class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+      {{ stats.failed_30d }} notification(s) failed to send. The enquiries are safe —
+      open <a routerLink="/submissions" [queryParams]="{ status: 'failed' }" class="font-semibold underline">Submissions</a>
+      and resend them once the SMTP problem is fixed.
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-3">
+      <div class="card lg:col-span-2">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Last 14 days</h2></div>
+        <div class="card-body">
+          <div *ngIf="stats.daily.length === 0" class="text-sm text-slate-500 py-8 text-center">
+            No submissions yet.
+          </div>
+          <!-- The bar's percentage height needs a parent with a definite height,
+               so the middle wrapper is flex-1 inside a fixed-height column. -->
+          <div *ngIf="stats.daily.length" class="flex items-stretch gap-1.5 h-44">
+            <div *ngFor="let d of stats.daily" class="flex-1 flex flex-col items-center gap-1.5 group min-w-0">
+              <span class="text-xs font-medium text-slate-600 opacity-0 group-hover:opacity-100 transition">{{ d.total }}</span>
+              <div class="flex-1 w-full flex items-end">
+                <div class="w-full bg-brand-500 rounded-t hover:bg-brand-600 transition"
+                     [style.height]="barHeight(d.total)" [title]="d.total + ' on ' + d.day"></div>
+              </div>
+              <span class="text-[10px] text-slate-400 truncate w-full text-center">{{ d.day | date:'d MMM' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2 class="font-semibold text-slate-900">Recent</h2>
+          <a routerLink="/submissions" class="text-sm text-brand-600 hover:underline">View all</a>
+        </div>
+        <div class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+          <div *ngIf="stats.recent.length === 0" class="p-5 text-sm text-slate-500">Nothing yet.</div>
+          <a *ngFor="let s of stats.recent" [routerLink]="['/submissions', s.id]"
+             class="block px-5 py-3 hover:bg-slate-50">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-slate-900 truncate">{{ s.tenant_name }}</p>
+              <span [ngClass]="statusClass(s.mail_status)">{{ s.mail_status }}</span>
+            </div>
+            <p class="text-xs text-slate-500 truncate mt-0.5">{{ s.form_name }} &middot; {{ s.created_at | date:'d MMM, h:mm a' }}</p>
+          </a>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+</div>

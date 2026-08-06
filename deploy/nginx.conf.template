@@ -1,0 +1,44 @@
+# CommonMailer API — nginx site.
+#
+# Written to /etc/nginx/conf.d/commonmailer.conf by deploy/setup-ec2.sh with
+# __API_DOMAIN__ and __APP_PORT__ substituted. certbot rewrites this file when it
+# installs the certificate, adding the 443 server block and the http->https
+# redirect, so there is no TLS config here to go stale.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __API_DOMAIN__;
+
+    # Keep the real client IP intact: the per-IP rate limit and the submission
+    # log both read req.ip, and Express only trusts these because app.js sets
+    # 'trust proxy'.
+    location / {
+        proxy_pass         http://127.0.0.1:__APP_PORT__;
+        proxy_http_version 1.1;
+
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        'upgrade';
+
+        # CORS is decided per form inside the app (each form has its own list of
+        # allowed websites), so nginx must not add its own CORS headers —
+        # duplicates make browsers reject the response outright.
+
+        proxy_connect_timeout 10s;
+        proxy_send_timeout    30s;
+        proxy_read_timeout    30s;
+    }
+
+    # A contact form submission is small. Anything larger is not a form post.
+    client_max_body_size 2m;
+
+    # Do not advertise the nginx version.
+    server_tokens off;
+
+    access_log /var/log/nginx/commonmailer.access.log;
+    error_log  /var/log/nginx/commonmailer.error.log;
+}

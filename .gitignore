@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------------------
+# Never commit anything below. Secrets and build output stay on the machine
+# that made them.
+# ---------------------------------------------------------------------------
+
+# Dependencies — reinstalled with `npm ci` on the server
+node_modules/
+*/node_modules/
+.npm/
+
+# Build output — rebuilt on deploy
+dist/
+*/dist/
+build/
+.angular/
+*.tsbuildinfo
+
+# Secrets and machine-local config. .env is written by hand on each machine.
+.env
+.env.*
+!.env.example
+.secrets.json
+FIRST_LOGIN.txt
+*.pem
+*.ppk
+*.key
+!nginx.conf.template
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pm2.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Local database dumps
+*.sql.gz
+*.dump

@@ -1,0 +1,102 @@
+<div class="max-w-7xl mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Forms</h1>
+      <p class="text-sm text-slate-500 mt-1">Each form is one contact form on one customer website.</p>
+    </div>
+    <a routerLink="/forms/new" class="btn-primary">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+      </svg>
+      New form
+    </a>
+  </div>
+
+  <select class="input max-w-xs" [(ngModel)]="tenantFilter" (change)="load()">
+    <option value="">All customers</option>
+    <option *ngFor="let t of tenants" [value]="t.id">{{ t.name }}</option>
+  </select>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <div *ngIf="!loading && forms.length === 0" class="card p-10 text-center">
+    <p class="text-sm font-medium text-slate-600">No forms yet.</p>
+    <p class="text-sm text-slate-500 mt-1">Create a form, then POST to its endpoint from the customer's website.</p>
+  </div>
+
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div *ngFor="let f of forms" class="card flex flex-col">
+      <div class="card-body flex-1">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <a [routerLink]="['/forms', f.id]" class="font-semibold text-slate-900 hover:text-brand-600 block truncate">
+              {{ f.name }}
+            </a>
+            <p class="text-xs text-slate-500 mt-0.5 truncate">{{ f.tenant_name }}</p>
+          </div>
+          <span [ngClass]="f.is_active ? 'badge-ok' : 'badge-mute'" class="shrink-0">
+            {{ f.is_active ? 'Live' : 'Off' }}
+          </span>
+        </div>
+
+        <div class="flex gap-4 mt-4 text-sm">
+          <div><span class="font-semibold text-slate-900">{{ f.field_count || 0 }}</span>
+            <span class="text-slate-500"> fields</span></div>
+          <div><span class="font-semibold text-slate-900">{{ f.submission_count || 0 }}</span>
+            <span class="text-slate-500"> enquiries</span></div>
+        </div>
+
+        <div class="mt-4">
+          <p class="text-xs font-medium text-slate-500 mb-1.5">POST endpoint</p>
+          <div class="flex gap-1.5">
+            <input class="input font-mono text-[11px] py-1.5" readonly [value]="f.links?.submit_url || ''"/>
+            <button type="button" class="btn-ghost btn-sm shrink-0" (click)="copyLink(f)">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t border-slate-200 flex gap-2">
+        <a [routerLink]="['/forms', f.id]" class="btn-ghost btn-sm flex-1">Edit</a>
+        <a [routerLink]="['/submissions']" [queryParams]="{ form_id: f.id }" class="btn-ghost btn-sm flex-1">Enquiries</a>
+        <button type="button" class="btn-ghost btn-sm" (click)="openCopy(f)" title="Copy to another customer">Copy</button>
+        <button type="button" class="btn-danger btn-sm" (click)="askDelete(f)">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<app-confirm [open]="confirmOpen" title="Delete this form?" [message]="deleteMessage"
+             (confirmed)="confirmDelete()" (cancelled)="confirmOpen = false"></app-confirm>
+
+<!-- Copy to another customer -->
+<div *ngIf="copyOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50" (click)="copyOpen = false">
+  <div class="card w-full max-w-md" (click)="$event.stopPropagation()">
+    <div class="card-head"><h3 class="font-semibold text-slate-900">Copy form to another customer</h3></div>
+    <div class="card-body space-y-4">
+      <p class="text-sm text-slate-600">
+        Copies all fields and email templates. The copy starts inactive with no allowed origins,
+        so set those before going live.
+      </p>
+      <div>
+        <label class="label">Customer <span class="text-red-500">*</span></label>
+        <select class="input" [(ngModel)]="copyTarget.tenant_id">
+          <option [ngValue]="null">Choose a customer</option>
+          <option *ngFor="let t of tenants" [ngValue]="t.id">{{ t.name }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">New form key <span class="text-red-500">*</span></label>
+        <input class="input font-mono" [(ngModel)]="copyTarget.form_key"/>
+      </div>
+      <div>
+        <label class="label">New form name <span class="text-red-500">*</span></label>
+        <input class="input" [(ngModel)]="copyTarget.name"/>
+      </div>
+    </div>
+    <div class="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
+      <button type="button" class="btn-ghost" (click)="copyOpen = false">Cancel</button>
+      <button type="button" class="btn-primary" (click)="submitCopy()">Copy form</button>
+    </div>
+  </div>
+</div>

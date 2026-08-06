@@ -1,0 +1,153 @@
+/**
+ * Joi schemas for the ADMIN api. (The public submit endpoint builds its schema
+ * at runtime from the database instead — see helpers/dynamicValidator.js.)
+ */
+const Joi = require('joi');
+
+const noHtmlValidator = (value, helpers) => {
+    if (typeof value === 'string' && /<[^>]*>/.test(value)) {
+        return helpers.error('string.noHtmlTags');
+    }
+    return value;
+};
+const noHtml = () => Joi.string().custom(noHtmlValidator)
+    .messages({ 'string.noHtmlTags': '{{#label}} must not contain HTML tags' });
+
+// Identifiers that end up in URLs and template placeholders. Restricting the
+// charset keeps them safe to interpolate anywhere without further escaping.
+const slug = Joi.string().trim().lowercase().min(2).max(60).pattern(/^[a-z0-9][a-z0-9-]*$/)
+    .messages({ 'string.pattern.base': '{{#label}} may contain only lowercase letters, numbers and hyphens' });
+
+const fieldKey = Joi.string().trim().min(1).max(50).pattern(/^[a-zA-Z_][a-zA-Z0-9_]*$/)
+    .messages({ 'string.pattern.base': '{{#label}} may contain only letters, numbers and underscore, and must not start with a number' });
+
+const emailList = Joi.array().items(Joi.string().trim().email({ tlds: { allow: false } })).max(20);
+
+// Full origins only ("https://site.com"), optionally a wildcard subdomain.
+// A bare hostname would be ambiguous about scheme and never match a real
+// Origin header.
+const originList = Joi.array().items(
+    Joi.string().trim().max(200).pattern(/^(\*|https?:\/\/(\*\.)?[a-zA-Z0-9.-]+(:\d+)?)$/)
+        .messages({ 'string.pattern.base': 'Each origin must look like https://example.com, https://*.example.com or *' })
+).max(20);
+
+const tenantSchema = Joi.object({
+    name: noHtml().trim().min(2).max(120).required().label('Customer name'),
+    slug: slug.required().label('Slug'),
+    website_url: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(200).allow('', null).label('Website URL'),
+    contact_email: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).label('Contact email'),
+    notes: noHtml().trim().max(1000).allow('', null).label('Notes'),
+    is_active: Joi.boolean().default(true)
+});
+
+const smtpSchema = Joi.object({
+    host: Joi.string().trim().hostname().max(200).required().label('SMTP host'),
+    port: Joi.number().integer().min(1).max(65535).default(587).label('SMTP port'),
+    secure: Joi.boolean().default(false),
+    username: Joi.string().trim().max(200).required().label('SMTP username'),
+    // Optional on update: blank means "keep the stored password".
+    password: Joi.string().max(300).allow('', null).label('SMTP password'),
+    from_name: noHtml().trim().max(100).required().label('From name'),
+    from_email: Joi.string().trim().email({ tlds: { allow: false } }).required().label('From email'),
+    reply_to: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).label('Reply-To'),
+    is_active: Joi.boolean().default(true)
+});
+
+const fieldSchema = Joi.object({
+    id: Joi.number().integer().allow(null),
+    field_key: fieldKey.required().label('Field key'),
+    label: noHtml().trim().min(1).max(150).required().label('Label'),
+    field_type: Joi.string().valid(
+        'text', 'email', 'tel', 'number', 'textarea', 'select', 'radio',
+        'checkbox', 'checkbox_group', 'date', 'url', 'hidden'
+    ).default('text').label('Field type'),
+    placeholder: noHtml().trim().max(200).allow('', null),
+    help_text: noHtml().trim().max(300).allow('', null),
+    default_value: noHtml().trim().max(300).allow('', null),
+    is_required: Joi.boolean().default(false),
+    min_length: Joi.number().integer().min(0).max(10000).allow(null),
+    max_length: Joi.number().integer().min(1).max(10000).allow(null),
+    min_value: Joi.number().allow(null),
+    max_value: Joi.number().allow(null),
+    pattern: Joi.string().trim().max(200).allow('', null),
+    pattern_message: noHtml().trim().max(200).allow('', null),
+    options: Joi.array().items(Joi.object({
+        label: noHtml().trim().max(150).required(),
+        value: noHtml().trim().max(150).required()
+    })).max(100).default([]),
+    textarea_rows: Joi.number().integer().min(2).max(20).default(4),
+    col_span: Joi.number().integer().min(1).max(3).default(1),
+    sort_order: Joi.number().integer().min(0).default(0),
+    is_active: Joi.boolean().default(true)
+});
+
+const formSchema = Joi.object({
+    tenant_id: Joi.number().integer().required().label('Customer'),
+    form_key: slug.max(80).required().label('Form key'),
+    name: noHtml().trim().min(2).max(150).required().label('Form name'),
+    description: noHtml().trim().max(500).allow('', null),
+
+    recipients: emailList.min(1).required().label('Recipients')
+        .messages({ 'array.min': 'At least one recipient email is required' }),
+    cc: emailList.default([]),
+    bcc: emailList.default([]),
+    allowed_origins: originList.default([]).label('Allowed website origins'),
+
+    title: noHtml().trim().max(150).allow('', null),
+    intro_text: noHtml().trim().max(500).allow('', null),
+    submit_button_text: noHtml().trim().max(60).default('Send Message'),
+    success_message: noHtml().trim().max(300).default('Thank you. Your message has been sent.'),
+    layout_columns: Joi.number().integer().min(1).max(3).default(1),
+
+    honeypot_field: fieldKey.default('website_url_hp').label('Honeypot field name'),
+    min_submit_seconds: Joi.number().integer().min(0).max(120).default(0),
+    max_per_hour_per_ip: Joi.number().integer().min(0).max(1000).default(5),
+    recaptcha_enabled: Joi.boolean().default(false),
+    recaptcha_site_key: Joi.string().trim().max(200).allow('', null),
+    recaptcha_secret: Joi.string().trim().max(300).allow('', null),
+    recaptcha_min_score: Joi.number().min(0).max(1).default(0.5),
+
+    autoreply_enabled: Joi.boolean().default(false),
+    autoreply_to_field: fieldKey.allow('', null),
+
+    store_submissions: Joi.boolean().default(true),
+    is_active: Joi.boolean().default(true),
+
+    fields: Joi.array().items(fieldSchema).min(1).max(60).required().label('Fields')
+        .messages({ 'array.min': 'Add at least one field to the form' })
+})
+    // A captcha that is switched on but has no keys would silently reject every
+    // visitor, so the combination is rejected at save time instead. `.required()`
+    // on the subject matters: without it an absent recaptcha_enabled also
+    // matches, and every form would demand a site key.
+    .when(Joi.object({ recaptcha_enabled: Joi.valid(true).required() }).unknown(), {
+        then: Joi.object({ recaptcha_site_key: Joi.string().trim().min(10).required() })
+    });
+
+const templateSchema = Joi.object({
+    template_type: Joi.string().valid('admin', 'autoreply').required(),
+    subject: Joi.string().trim().min(1).max(200).required().label('Subject'),
+    // html_body intentionally allows markup — you author it, and every value
+    // substituted into it is escaped by helpers/template.js.
+    html_body: Joi.string().max(50000).required().label('HTML body'),
+    text_body: Joi.string().max(20000).allow('', null),
+    is_active: Joi.boolean().default(true)
+});
+
+/** Express middleware factory: validates req.body and replaces it with the cast value. */
+function validate(schema) {
+    return (req, res, next) => {
+        const { error, value } = schema.validate(req.body, { abortEarly: false, stripUnknown: true, convert: true });
+        if (error) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Please correct the highlighted fields.',
+                errors: error.details.map((d) => ({ field: d.path.join('.'), message: d.message }))
+            });
+        }
+        req.body = value;
+        next();
+    };
+}
+
+module.exports = { tenantSchema, smtpSchema, formSchema, fieldSchema, templateSchema, validate };

@@ -1,0 +1,100 @@
+<div class="max-w-7xl mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Submissions</h1>
+      <p class="text-sm text-slate-500 mt-1">{{ pagination.total }} enquiries.</p>
+    </div>
+    <button type="button" class="btn-ghost" (click)="exportCsv()">Export CSV</button>
+  </div>
+
+  <div class="card card-body grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+    <select class="input" [(ngModel)]="filters.tenant_id" (change)="load()">
+      <option value="">All customers</option>
+      <option *ngFor="let t of tenants" [value]="t.id">{{ t.name }}</option>
+    </select>
+
+    <select class="input" [(ngModel)]="filters.form_id" (change)="load()">
+      <option value="">All forms</option>
+      <option *ngFor="let f of forms" [value]="f.id">{{ f.name }}</option>
+    </select>
+
+    <select class="input" [(ngModel)]="filters.status" (change)="load()">
+      <option value="">All statuses</option>
+      <option value="sent">Sent</option>
+      <option value="failed">Failed</option>
+      <option value="pending">Pending</option>
+      <option value="spam">Spam</option>
+    </select>
+
+    <input class="input" type="date" [(ngModel)]="filters.from_date" (change)="load()"/>
+    <input class="input" type="date" [(ngModel)]="filters.to_date" (change)="load()"/>
+
+    <div class="flex gap-2">
+      <input class="input" placeholder="Search..." [(ngModel)]="filters.search"
+             (keyup.enter)="load()"/>
+      <button type="button" class="btn-ghost btn-sm shrink-0" (click)="resetFilters()">Clear</button>
+    </div>
+  </div>
+
+  <div class="card overflow-hidden">
+    <div *ngIf="loading" class="p-6 text-sm text-slate-500">Loading...</div>
+
+    <div *ngIf="!loading && submissions.length === 0" class="p-10 text-center text-sm text-slate-500">
+      No submissions match these filters.
+    </div>
+
+    <div *ngIf="!loading && submissions.length" class="overflow-x-auto">
+      <table class="w-full min-w-[56rem]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th">Received</th>
+            <th class="th">Customer / Form</th>
+            <th class="th">Preview</th>
+            <th class="th">Status</th>
+            <th class="th text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr *ngFor="let s of submissions" class="hover:bg-slate-50">
+            <td class="td whitespace-nowrap">
+              {{ s.created_at | date:'d MMM yyyy' }}
+              <span class="block text-xs text-slate-500">{{ s.created_at | date:'h:mm a' }}</span>
+            </td>
+            <td class="td">
+              <span class="font-medium text-slate-900">{{ s.tenant_name }}</span>
+              <span class="block text-xs text-slate-500">{{ s.form_name }}</span>
+            </td>
+            <td class="td max-w-xs">
+              <span class="line-clamp-2 text-slate-600">{{ summary(s) }}</span>
+              <span *ngIf="s.spam_reason" class="text-xs text-slate-400">blocked: {{ s.spam_reason }}</span>
+            </td>
+            <td class="td">
+              <span [ngClass]="statusClass(s.mail_status)">{{ s.mail_status }}</span>
+              <span *ngIf="s.mail_error" class="block text-xs text-red-500 mt-1 max-w-[14rem] truncate"
+                    [title]="s.mail_error">{{ s.mail_error }}</span>
+            </td>
+            <td class="td text-right whitespace-nowrap">
+              <a [routerLink]="['/submissions', s.id]" class="btn-ghost btn-sm">View</a>
+              <button *ngIf="s.mail_status === 'failed'" type="button" class="btn-primary btn-sm ml-2"
+                      (click)="resend(s)">Resend</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div *ngIf="pagination.pages > 1" class="px-5 py-3 border-t border-slate-200 flex items-center justify-between gap-3">
+      <p class="text-sm text-slate-500">Page {{ pagination.page }} of {{ pagination.pages }}</p>
+      <div class="flex gap-1">
+        <button type="button" class="btn-ghost btn-sm" [disabled]="pagination.page === 1"
+                (click)="load(pagination.page - 1)">Prev</button>
+        <button type="button" *ngFor="let p of pageNumbers" class="btn-ghost btn-sm"
+                [class.!bg-brand-600]="p === pagination.page" [class.!text-white]="p === pagination.page"
+                (click)="load(p)">{{ p }}</button>
+        <button type="button" class="btn-ghost btn-sm" [disabled]="pagination.page === pagination.pages"
+                (click)="load(pagination.page + 1)">Next</button>
+      </div>
+    </div>
+  </div>
+</div>

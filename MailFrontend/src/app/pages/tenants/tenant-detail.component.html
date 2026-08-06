@@ -1,0 +1,168 @@
+<div class="max-w-4xl mx-auto space-y-6">
+
+  <div class="flex items-center gap-3">
+    <a routerLink="/customers" class="text-slate-400 hover:text-slate-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </a>
+    <h1 class="text-2xl font-bold text-slate-900">{{ isNew ? 'Add customer' : form.value.name }}</h1>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <ng-container *ngIf="!loading">
+    <!-- Customer details -->
+    <form class="card" [formGroup]="form" (ngSubmit)="save()">
+      <div class="card-head"><h2 class="font-semibold text-slate-900">Customer details</h2></div>
+      <div class="card-body grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="label">Customer name <span class="text-red-500">*</span></label>
+          <input class="input" formControlName="name" (input)="onNameChange()" placeholder="Dharstec Solutions"
+                 [class.input-err]="form.controls.name.touched && form.controls.name.invalid"/>
+          <p class="err" *ngIf="form.controls.name.touched && form.controls.name.invalid">Name is required.</p>
+        </div>
+
+        <div>
+          <label class="label">Slug <span class="text-red-500">*</span></label>
+          <input class="input font-mono" formControlName="slug" placeholder="dharstec-solutions"
+                 [class.input-err]="form.controls.slug.touched && form.controls.slug.invalid"/>
+          <p class="hint">Lowercase letters, numbers and hyphens. Used internally to identify this customer.</p>
+          <p class="err" *ngIf="form.controls.slug.touched && form.controls.slug.invalid">
+            Only lowercase letters, numbers and hyphens.
+          </p>
+        </div>
+
+        <div>
+          <label class="label">Website URL</label>
+          <input class="input" formControlName="website_url" placeholder="https://dharstec.com"/>
+        </div>
+
+        <div>
+          <label class="label">Contact email</label>
+          <input class="input" formControlName="contact_email" placeholder="info@dharstec.com"/>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="label">Notes</label>
+          <textarea class="input" rows="2" formControlName="notes" placeholder="Anything worth remembering about this customer"></textarea>
+        </div>
+
+        <label class="flex items-center gap-2.5 text-sm text-slate-700 sm:col-span-2">
+          <input type="checkbox" formControlName="is_active" class="rounded border-slate-300"/>
+          Active — when off, every form for this customer stops accepting submissions.
+        </label>
+      </div>
+      <div class="px-5 py-4 border-t border-slate-200 flex justify-end">
+        <button type="submit" class="btn-primary" [disabled]="saving">
+          {{ saving ? 'Saving...' : (isNew ? 'Create customer' : 'Save changes') }}
+        </button>
+      </div>
+    </form>
+
+    <!-- SMTP -->
+    <form class="card" [formGroup]="smtpForm" (ngSubmit)="saveSmtp()">
+      <div class="card-head">
+        <div>
+          <h2 class="font-semibold text-slate-900">Sending account (SMTP)</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Mail for this customer is sent from their own mailbox.</p>
+        </div>
+        <span *ngIf="smtpVerifiedAt" class="badge-ok">Verified</span>
+        <span *ngIf="smtpConfigured && !smtpVerifiedAt" class="badge-warn">Not tested</span>
+      </div>
+
+      <div class="card-body space-y-4">
+        <div *ngIf="isNew" class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
+          Create the customer first, then configure their SMTP account here.
+        </div>
+
+        <div>
+          <p class="label">Quick presets</p>
+          <div class="flex flex-wrap gap-2">
+            <button *ngFor="let p of presets" type="button" class="btn-ghost btn-sm capitalize"
+                    (click)="applyPreset(p)">{{ p }}</button>
+          </div>
+          <p class="hint" *ngIf="presetNote">{{ presetNote }}</p>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label">SMTP host <span class="text-red-500">*</span></label>
+            <input class="input" formControlName="host" placeholder="smtp.gmail.com"
+                   [class.input-err]="smtpForm.controls.host.touched && smtpForm.controls.host.invalid"/>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label">Port <span class="text-red-500">*</span></label>
+              <input class="input" type="number" formControlName="port" (change)="onPortChange()"/>
+            </div>
+            <div class="flex items-end pb-2.5">
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" formControlName="secure" class="rounded border-slate-300"/>
+                SSL/TLS
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="label">Username <span class="text-red-500">*</span></label>
+            <input class="input" formControlName="username" placeholder="info@dharstec.com" autocomplete="off"
+                   [class.input-err]="smtpForm.controls.username.touched && smtpForm.controls.username.invalid"/>
+          </div>
+
+          <div>
+            <label class="label">
+              Password {{ smtpConfigured ? '' : '*' }}
+            </label>
+            <input class="input" type="password" formControlName="password" autocomplete="new-password"
+                   [placeholder]="smtpConfigured ? 'Leave blank to keep the stored password' : 'Mailbox or app password'"/>
+            <p class="hint">Encrypted with AES-256-GCM before storage. It is never shown again.</p>
+          </div>
+
+          <div>
+            <label class="label">From name <span class="text-red-500">*</span></label>
+            <input class="input" formControlName="from_name" placeholder="Dharstec Solutions"/>
+          </div>
+
+          <div>
+            <label class="label">From email <span class="text-red-500">*</span></label>
+            <input class="input" formControlName="from_email" placeholder="info@dharstec.com"
+                   [class.input-err]="smtpForm.controls.from_email.touched && smtpForm.controls.from_email.invalid"/>
+            <p class="hint">Must be a mailbox this SMTP account is allowed to send as.</p>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="label">Default Reply-To</label>
+            <input class="input" formControlName="reply_to" placeholder="Optional"/>
+            <p class="hint">
+              When a form collects the visitor's email, that address is used as Reply-To instead,
+              so replying reaches the visitor directly.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" class="btn-ghost" [disabled]="isNew || !smtpConfigured || testing" (click)="testSmtp()">
+            {{ testing ? 'Testing...' : 'Test connection' }}
+          </button>
+          <input class="input w-56" placeholder="you@example.com" [(ngModel)]="testEmail" [ngModelOptions]="{ standalone: true }"/>
+          <button type="button" class="btn-ghost" [disabled]="isNew || !smtpConfigured || testing" (click)="sendTestMail()">
+            Send test email
+          </button>
+        </div>
+        <button type="submit" class="btn-primary" [disabled]="isNew || savingSmtp">
+          {{ savingSmtp ? 'Saving...' : 'Save SMTP' }}
+        </button>
+      </div>
+    </form>
+
+    <div *ngIf="!isNew" class="flex justify-end">
+      <a [routerLink]="['/forms/new']" [queryParams]="{ tenant: tenantId }" class="btn-primary">
+        Create a form for this customer
+      </a>
+    </div>
+  </ng-container>
+</div>

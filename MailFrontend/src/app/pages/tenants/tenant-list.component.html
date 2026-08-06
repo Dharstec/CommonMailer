@@ -1,0 +1,74 @@
+<div class="max-w-7xl mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Customers</h1>
+      <p class="text-sm text-slate-500 mt-1">One row per website you send mail for.</p>
+    </div>
+    <a routerLink="/customers/new" class="btn-primary">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+      </svg>
+      Add customer
+    </a>
+  </div>
+
+  <input class="input max-w-sm" placeholder="Search by name, slug or website..." [(ngModel)]="search"/>
+
+  <div class="card overflow-hidden">
+    <div *ngIf="loading" class="p-6 text-sm text-slate-500">Loading...</div>
+
+    <div *ngIf="!loading && filtered.length === 0" class="p-10 text-center">
+      <p class="text-sm text-slate-600 font-medium">
+        {{ tenants.length ? 'No customer matches that search.' : 'No customers yet.' }}
+      </p>
+      <p class="text-sm text-slate-500 mt-1" *ngIf="!tenants.length">
+        Add your first customer, then create their contact form.
+      </p>
+    </div>
+
+    <div *ngIf="!loading && filtered.length" class="overflow-x-auto">
+      <table class="w-full min-w-[52rem]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th">Customer</th>
+            <th class="th">Website</th>
+            <th class="th">Forms</th>
+            <th class="th">SMTP</th>
+            <th class="th">Status</th>
+            <th class="th text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr *ngFor="let t of filtered" class="hover:bg-slate-50">
+            <td class="td">
+              <a [routerLink]="['/customers', t.id]" class="font-medium text-slate-900 hover:text-brand-600">{{ t.name }}</a>
+              <p class="text-xs text-slate-500 font-mono mt-0.5">{{ t.slug }}</p>
+            </td>
+            <td class="td">
+              <a *ngIf="t.website_url" [href]="t.website_url" target="_blank" rel="noopener noreferrer"
+                 class="text-brand-600 hover:underline text-sm break-all">{{ t.website_url }}</a>
+              <span *ngIf="!t.website_url" class="text-slate-400">&mdash;</span>
+            </td>
+            <td class="td">{{ t.form_count || 0 }}</td>
+            <td class="td">
+              <span *ngIf="t.smtp_configured && t.smtp_verified_at" class="badge-ok">Verified</span>
+              <span *ngIf="t.smtp_configured && !t.smtp_verified_at" class="badge-warn">Not tested</span>
+              <span *ngIf="!t.smtp_configured" class="badge-err">Missing</span>
+            </td>
+            <td class="td">
+              <span [ngClass]="t.is_active ? 'badge-ok' : 'badge-mute'">{{ t.is_active ? 'Active' : 'Inactive' }}</span>
+            </td>
+            <td class="td text-right whitespace-nowrap">
+              <a [routerLink]="['/customers', t.id]" class="btn-ghost btn-sm">Edit</a>
+              <button type="button" class="btn-danger btn-sm ml-2" (click)="askDelete(t)">Delete</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<app-confirm [open]="confirmOpen" title="Delete this customer?" [message]="deleteMessage"
+             (confirmed)="confirmDelete()" (cancelled)="confirmOpen = false"></app-confirm>

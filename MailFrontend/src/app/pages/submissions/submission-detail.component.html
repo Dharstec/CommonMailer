@@ -1,0 +1,65 @@
+<div class="max-w-3xl mx-auto space-y-5">
+
+  <div class="flex items-center gap-3">
+    <a routerLink="/submissions" class="text-slate-400 hover:text-slate-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </a>
+    <h1 class="text-2xl font-bold text-slate-900">Submission</h1>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <ng-container *ngIf="!loading && submission">
+    <div class="card">
+      <div class="card-head">
+        <div class="min-w-0">
+          <h2 class="font-semibold text-slate-900 truncate">{{ submission.tenant_name }}</h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            {{ submission.form_name }} &middot; {{ submission.created_at | date:'d MMM yyyy, h:mm a' }}
+          </p>
+        </div>
+        <span [ngClass]="statusClass(submission.mail_status)">{{ submission.mail_status }}</span>
+      </div>
+
+      <div *ngIf="submission.mail_error" class="px-5 py-3 bg-red-50 border-b border-red-200 text-sm text-red-700">
+        <span class="font-medium">Delivery failed:</span> {{ submission.mail_error }}
+        <p class="text-xs mt-1">The enquiry itself is safe. Fix the SMTP settings, then resend below.</p>
+      </div>
+
+      <div *ngIf="submission.spam_reason" class="px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm text-slate-600">
+        Blocked as spam ({{ submission.spam_reason }}). No email was sent.
+      </div>
+
+      <div class="divide-y divide-slate-100">
+        <div *ngFor="let row of rows" class="px-5 py-3.5 grid sm:grid-cols-3 gap-2">
+          <p class="text-sm font-medium text-slate-500">{{ row.label }}</p>
+          <p class="text-sm text-slate-900 sm:col-span-2 whitespace-pre-wrap break-words">{{ row.value || '—' }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2 class="font-semibold text-slate-900">Request details</h2></div>
+      <div class="card-body grid gap-3 sm:grid-cols-2 text-sm">
+        <div><span class="text-slate-500">IP address</span><p class="font-mono text-slate-900">{{ submission.ip || '—' }}</p></div>
+        <div><span class="text-slate-500">Origin</span><p class="font-mono text-slate-900 break-all">{{ submission.origin || '—' }}</p></div>
+        <div class="sm:col-span-2"><span class="text-slate-500">Referring page</span>
+          <p class="font-mono text-slate-900 break-all">{{ submission.referer || '—' }}</p></div>
+        <div class="sm:col-span-2"><span class="text-slate-500">Browser</span>
+          <p class="text-xs text-slate-600 break-all">{{ submission.user_agent || '—' }}</p></div>
+      </div>
+    </div>
+
+    <div class="flex justify-between">
+      <button type="button" class="btn-danger" (click)="confirmOpen = true">Delete</button>
+      <button type="button" class="btn-primary" (click)="resend()"
+              *ngIf="submission.mail_status !== 'spam'">Resend notification</button>
+    </div>
+  </ng-container>
+</div>
+
+<app-confirm [open]="confirmOpen" title="Delete this submission?"
+             message="The enquiry record will be permanently removed. This cannot be undone."
+             (confirmed)="remove()" (cancelled)="confirmOpen = false"></app-confirm>

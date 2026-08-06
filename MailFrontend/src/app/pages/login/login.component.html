@@ -1,0 +1,52 @@
+<div class="min-h-screen flex items-center justify-center p-4 bg-slate-100">
+  <div class="w-full max-w-sm">
+
+    <div class="text-center mb-7">
+      <div class="w-12 h-12 rounded-xl bg-brand-600 mx-auto flex items-center justify-center text-white mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <h1 class="text-xl font-bold text-slate-900">CommonMailer</h1>
+      <p class="text-sm text-slate-500 mt-1">Contact form &amp; mail service</p>
+    </div>
+
+    <form class="card card-body space-y-4" [formGroup]="form" (ngSubmit)="submit()">
+      <div *ngIf="errorMessage" class="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">
+        {{ errorMessage }}
+      </div>
+
+      <div>
+        <label class="label" for="email">Email</label>
+        <input id="email" type="email" class="input" formControlName="email" autocomplete="username"
+               [class.input-err]="form.controls.email.touched && form.controls.email.invalid"
+               placeholder="you@company.com"/>
+        <p class="err" *ngIf="form.controls.email.touched && form.controls.email.invalid">
+          Enter a valid email address.
+        </p>
+      </div>
+
+      <div>
+        <label class="label" for="password">Password</label>
+        <div class="relative">
+          <input id="password" [type]="showPassword ? 'text' : 'password'" class="input pr-10"
+                 formControlName="password" autocomplete="current-password"
+                 [class.input-err]="form.controls.password.touched && form.controls.password.invalid"
+                 placeholder="••••••••"/>
+          <button type="button" (click)="showPassword = !showPassword" tabindex="-1"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-700">
+            {{ showPassword ? 'Hide' : 'Show' }}
+          </button>
+        </div>
+        <p class="err" *ngIf="form.controls.password.touched && form.controls.password.invalid">
+          Password is required.
+        </p>
+      </div>
+
+      <button type="submit" class="btn-primary w-full" [disabled]="loading">
+        {{ loading ? 'Signing in...' : 'Sign in' }}
+      </button>
+    </form>
+  </div>
+</div>
