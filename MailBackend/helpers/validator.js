@@ -13,6 +13,25 @@ const noHtmlValidator = (value, helpers) => {
 const noHtml = () => Joi.string().custom(noHtmlValidator)
     .messages({ 'string.noHtmlTags': '{{#label}} must not contain HTML tags' });
 
+/**
+ * Google shows an App Password as four groups of four letters — "abcd efgh ijkl
+ * mnop" — and mail clients silently strip the spaces before sending it. Nodemailer
+ * does not, so a pasted-as-shown password is transmitted with spaces and Gmail
+ * answers 535 "Username and Password not accepted", which reads as a wrong
+ * password and sends people hunting for the wrong problem.
+ *
+ * Only this exact shape is normalised. Any other password keeps its spaces,
+ * because a real passphrase is allowed to contain them.
+ */
+const GOOGLE_APP_PASSWORD = /^[a-z]{4} [a-z]{4} [a-z]{4} [a-z]{4}$/i;
+
+const normaliseAppPassword = (value) => {
+    if (typeof value === 'string' && GOOGLE_APP_PASSWORD.test(value.trim())) {
+        return value.trim().replace(/\s+/g, '');
+    }
+    return value;
+};
+
 // Identifiers that end up in URLs and template placeholders. Restricting the
 // charset keeps them safe to interpolate anywhere without further escaping.
 const slug = Joi.string().trim().lowercase().min(2).max(60).pattern(/^[a-z0-9][a-z0-9-]*$/)
@@ -46,10 +65,8 @@ const smtpSchema = Joi.object({
     secure: Joi.boolean().default(false),
     username: Joi.string().trim().max(200).required().label('SMTP username'),
     // Optional on update: blank means "keep the stored password".
-    // Trimmed because app passwords are copied out of a provider's UI and
-    // routinely arrive with a leading or trailing space, which the server then
-    // rejects as a wrong password.
-    password: Joi.string().trim().max(300).allow('', null).label('SMTP password'),
+    password: Joi.string().trim().max(300).custom(normaliseAppPassword)
+        .allow('', null).label('SMTP password'),
     from_name: noHtml().trim().max(100).required().label('From name'),
     from_email: Joi.string().trim().email({ tlds: { allow: false } }).required().label('From email'),
     reply_to: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).label('Reply-To'),
