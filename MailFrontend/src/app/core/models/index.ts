@@ -106,6 +106,9 @@ export interface ContactForm {
   honeypot_field: string;
   min_submit_seconds: number;
   max_per_hour_per_ip: number;
+  require_origin: boolean;
+  duplicate_window_minutes: number;
+  content_filter_enabled: boolean;
   recaptcha_enabled: boolean;
   recaptcha_site_key?: string | null;
   recaptcha_secret?: string | null;

@@ -134,11 +134,18 @@ The **API tab** generates this for you, matching that form's exact fields:
   <label>Purpose</label>
   <textarea name="purpose" required></textarea>
 
+  <!-- bot traps: leave both of these exactly as they are -->
+  <input type="text" name="website_url_hp" tabindex="-1" autocomplete="off"
+         style="position:absolute;left:-9999px" aria-hidden="true">
+  <input type="hidden" name="_ts" id="cm-ts">
+
   <button type="submit">Send</button>
   <p id="cm-msg"></p>
 </form>
 
 <script>
+document.getElementById('cm-ts').value = Date.now();
+
 document.getElementById('cm-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   const body = Object.fromEntries(new FormData(e.target).entries());
@@ -278,7 +285,10 @@ offered.
 | Option whitelist | Tampered dropdown / radio values |
 | HTML rejection | Markup in any text field |
 | Per-IP rate limit | Flooding (counted in the DB, survives restarts) |
-| Honeypot *(optional)* | Bots — add a hidden input, see below |
+| Required `Origin` header | Scripts posting straight at the API, bypassing every in-page trap |
+| Duplicate suppression | Retry loops, and a visitor double-clicking Send |
+| Honeypot | Bots — the hidden input is part of the generated snippet |
+| Random-text filter *(optional)* | Generated filler like `dpzuDpOBLOdlervZvhwuJlQ` |
 | reCAPTCHA v3 *(optional)* | Sophisticated bots |
 | AES-256-GCM | SMTP passwords readable in a DB dump |
 | Header sanitising | Mail-header injection through the subject |
@@ -295,26 +305,35 @@ Choices worth knowing:
 - **Passwords never come back.** No endpoint returns a stored SMTP password.
 - **Templates cannot execute.** `{{field}}` substitution with escaping only.
 
-### Optional extra bot protection
+### Why the `Origin` header is the check that matters
 
-Both are opt-in — leave them out and the checks are simply skipped.
+The honeypot, the `_ts` time trap and the reCAPTCHA token all originate in the
+page. A script that never loads the page skips all three by simply leaving them
+out of the payload, and the only thing left standing is the per-IP rate limit —
+which a bot rotating addresses never reaches. That is not a hypothetical: it is
+how a run of 83 messages landed in a customer's inbox over six days in August
+2026, every one of them accepted and mailed.
 
-**Honeypot.** Add a hidden input named after the form's honeypot field
-(Security tab). Real people never fill it; if it arrives non-empty the
-submission is dropped.
+Browsers send `Origin` on every form POST, cross-origin and same-origin alike.
+A curl or Python client sends none. So **Security → Require a browser Origin
+header** is what separates the two, and it costs a real visitor nothing.
 
-```html
-<input type="text" name="website_url_hp" tabindex="-1" autocomplete="off"
-       style="position:absolute;left:-9999px">
-```
+- Fill in **Allowed websites** first. With the box ticked and the list empty,
+  every submission is blocked.
+- Untick it only for a form the customer submits from their own backend.
+- Existing forms were migrated with it on wherever an allowlist was already
+  filled in, and off where one was not.
 
-**Time trap.** Send `_ts` with the page-load time. Set the minimum seconds on the
-Security tab (0 = off).
+### The other two settings
 
-```html
-<input type="hidden" name="_ts" id="cm-ts">
-<script>document.getElementById('cm-ts').value = Date.now();</script>
-```
+**Ignore an identical repeat within N minutes** (default 10). The same values
+twice inside the window are stored once and mailed once.
+
+**Drop messages that are random characters** (off by default). Scores the
+free-text fields for generated filler. It is the only check that can misjudge a
+real person, so it is opt-in, it never looks at names, emails or phone numbers,
+and everything it catches is kept under Submissions marked `spam` — review it
+there before trusting it.
 
 ### Before production
 

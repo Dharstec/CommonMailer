@@ -338,6 +338,48 @@
             <input class="input max-w-xs" type="number" formControlName="max_per_hour_per_ip" min="0" max="1000"/>
             <p class="hint">0 disables this check. Counted in the database, so it holds across restarts and servers.</p>
           </div>
+
+          <div class="sm:col-span-2 border-t border-slate-200 pt-4">
+            <label class="flex items-start gap-2.5 text-sm text-slate-700">
+              <input type="checkbox" formControlName="require_origin" class="mt-0.5 rounded border-slate-300"/>
+              <span>
+                <span class="font-medium">Require a browser Origin header</span>
+                <span class="block text-xs text-slate-500 mt-0.5">
+                  Every browser sends <code>Origin</code> on a form POST. A script posting straight at the API
+                  does not, and skips the honeypot, the timing trap and reCAPTCHA along with it — this is the
+                  check that stops it. Untick only if the customer submits this form from their own backend.
+                </span>
+              </span>
+            </label>
+            <div *ngIf="form.value.require_origin && !form.value.origins_text"
+                 class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
+              This blocks every submission until <span class="font-medium">Allowed websites</span> above is filled in.
+            </div>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="label">Ignore an identical repeat within (minutes)</label>
+            <input class="input max-w-xs" type="number" formControlName="duplicate_window_minutes" min="0" max="1440"/>
+            <p class="hint">
+              The same values submitted twice inside this window are stored once and mailed once. 0 disables it.
+              Catches both a retrying bot and a visitor double-clicking Send.
+            </p>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="flex items-start gap-2.5 text-sm text-slate-700">
+              <input type="checkbox" formControlName="content_filter_enabled" class="mt-0.5 rounded border-slate-300"/>
+              <span>
+                <span class="font-medium">Drop messages that are random characters</span>
+                <span class="block text-xs text-slate-500 mt-0.5">
+                  Scores the free-text fields for filler like <code class="font-mono">dpzuDpOBLOdlervZvhwuJlQ</code>.
+                  This is the one check here that can misjudge a real person, so it is off by default and
+                  everything it catches is kept under Submissions, marked <span class="font-medium">spam</span> —
+                  review it there for a week before trusting it.
+                </span>
+              </span>
+            </label>
+          </div>
         </div>
       </div>
 

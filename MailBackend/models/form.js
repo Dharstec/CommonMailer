@@ -33,6 +33,9 @@ function formColumns(body, recaptchaSecretEnc) {
         honeypot_field: body.honeypot_field,
         min_submit_seconds: body.min_submit_seconds,
         max_per_hour_per_ip: body.max_per_hour_per_ip,
+        require_origin: body.require_origin,
+        duplicate_window_minutes: body.duplicate_window_minutes,
+        content_filter_enabled: body.content_filter_enabled,
         recaptcha_enabled: body.recaptcha_enabled,
         recaptcha_site_key: body.recaptcha_site_key || null,
         recaptcha_secret_enc: recaptchaSecretEnc,
@@ -330,9 +333,10 @@ const duplicate = async (req, res) => {
                     tenant_id, form_key, name, description, recipients, cc, bcc, allowed_origins,
                     title, intro_text, submit_button_text, success_message, layout_columns,
                     honeypot_field, min_submit_seconds, max_per_hour_per_ip,
+                    require_origin, duplicate_window_minutes, content_filter_enabled,
                     recaptcha_enabled, recaptcha_site_key, recaptcha_secret_enc, recaptcha_min_score,
                     autoreply_enabled, autoreply_to_field, store_submissions, is_active
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
                  RETURNING *`,
                 [
                     tenant_id, form_key, name, src.description, src.recipients, src.cc, src.bcc,
@@ -341,6 +345,10 @@ const duplicate = async (req, res) => {
                     // allowlist that would let the wrong site post.
                     [], src.title, src.intro_text, src.submit_button_text, src.success_message,
                     src.layout_columns, src.honeypot_field, src.min_submit_seconds, src.max_per_hour_per_ip,
+                    // The copy starts locked down: it has no allowlist yet, so
+                    // requiring an Origin is what keeps it from being a wide-open
+                    // endpoint in the window before someone fills one in.
+                    true, src.duplicate_window_minutes, src.content_filter_enabled,
                     false, null, null, src.recaptcha_min_score,
                     src.autoreply_enabled, src.autoreply_to_field, src.store_submissions, false
                 ]

@@ -11,6 +11,7 @@
  * the visitor — telling a bot which check caught it is free tuning feedback.
  */
 const axios = require('axios');
+const crypto = require('crypto');
 const POSTGRESQLService = require('./POSTGRES');
 const { decrypt } = require('./crypto');
 const logger = require('./logger');
@@ -18,13 +19,25 @@ const logger = require('./logger');
 /**
  * Compares an incoming Origin against the form's allowlist.
  *
- * A missing Origin is allowed: that is a server-to-server or curl call, which
- * the browser-oriented CORS model does not cover and which the rate limiter and
- * validation still gate. A *present but unlisted* Origin is a real browser on a
- * site we did not authorise, so it is rejected.
+ * A *present but unlisted* Origin is a real browser on a site we did not
+ * authorise, so it is rejected.
+ *
+ * A *missing* Origin used to be an automatic pass, on the reasoning that
+ * server-to-server callers have no Origin and the later layers still gate them.
+ * They do not: the honeypot, the timing token and the captcha response all
+ * originate in the page, so a caller that never loads the page skips all three
+ * by simply omitting them, and only the per-IP rate limit is left — which a bot
+ * rotating addresses never reaches. That is the whole of how a direct-POST spam
+ * run gets in.
+ *
+ * Browsers send Origin on every POST, cross-origin and same-origin alike (Fetch
+ * spec, "same-origin" request with a method other than GET/HEAD), so on a form
+ * that is only ever submitted from a web page, absent means "not a browser".
+ * `requireOrigin` is per-form because a form genuinely called from someone's
+ * backend must still be able to opt out.
  */
-function checkOrigin(origin, allowedOrigins) {
-    if (!origin) return null;
+function checkOrigin(origin, allowedOrigins, requireOrigin) {
+    if (!origin) return requireOrigin ? 'origin_missing' : null;
 
     const list = Array.isArray(allowedOrigins) ? allowedOrigins : [];
     if (list.length === 0) return 'origin_not_configured';
@@ -36,17 +49,26 @@ function checkOrigin(origin, allowedOrigins) {
         const candidate = normalise(entry);
         if (candidate === '*') return true;
         if (candidate === incoming) return true;
-        // "*.example.com" covers any subdomain but not a lookalike suffix.
-        if (candidate.startsWith('*.')) {
-            const suffix = candidate.slice(1); // ".example.com"
-            try {
-                const host = new URL(incoming).host;
-                return host.endsWith(suffix.slice(1)) || host === suffix.slice(2);
-            } catch (err) {
-                return false;
-            }
+
+        // "https://*.example.com" covers any subdomain and the apex, but not a
+        // lookalike suffix: notexample.com must not match .example.com.
+        //
+        // The wildcard sits after the scheme, because that is the only shape
+        // the admin schema accepts (originList in helpers/validator.js) and the
+        // only one the panel tells you to write. An earlier version tested for a
+        // leading "*." instead, which no accepted entry ever has, so wildcard
+        // entries silently matched nothing at all.
+        const [scheme, pattern] = candidate.split('://');
+        if (!pattern || !pattern.startsWith('*.')) return false;
+
+        const suffix = pattern.slice(1); // ".example.com"
+        try {
+            const url = new URL(incoming);
+            if (url.protocol.replace(/:$/, '') !== scheme) return false;
+            return url.host.endsWith(suffix) || url.host === suffix.slice(1);
+        } catch (err) {
+            return false;
         }
-        return false;
     });
 
     return allowed ? null : 'origin_not_allowed';
@@ -104,6 +126,130 @@ async function checkRateLimit(formId, ip, maxPerHour) {
     return rows[0] && rows[0].total >= maxPerHour ? 'rate_limited' : null;
 }
 
+/**
+ * Stable fingerprint of the submitted values.
+ *
+ * Keys are sorted so two payloads that differ only in property order hash
+ * alike, and values are lower-cased and whitespace-collapsed so a retry that
+ * re-serialises the form does not read as a different message.
+ */
+function payloadHash(data) {
+    const normalise = (value) => {
+        if (Array.isArray(value)) return value.map(normalise);
+        if (value === null || value === undefined) return '';
+        return String(value).trim().toLowerCase().replace(/\s+/g, ' ');
+    };
+
+    const canonical = Object.keys(data || {})
+        .sort()
+        .map((key) => [key, normalise(data[key])]);
+
+    return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+/**
+ * Drops an identical payload replayed inside the window.
+ *
+ * Deliberately keyed on the payload and not the IP: the spam run that prompted
+ * this sent each message twice from the same address about 3.5 seconds apart,
+ * but the same retry loop behind rotating addresses would otherwise still land
+ * twice. It also absorbs the human version of the same thing — a double-click
+ * on Send, or a page restored from the back/forward cache.
+ */
+async function checkDuplicate(formId, hash, windowMinutes) {
+    if (!windowMinutes || windowMinutes <= 0) return null;
+    if (!hash) return null;
+
+    const rows = await POSTGRESQLService.PostgresAny(
+        `SELECT 1
+           FROM submissions
+          WHERE form_id = $1
+            AND payload_hash = $2
+            AND created_at > now() - ($3 || ' minutes')::interval
+          LIMIT 1`,
+        [formId, hash, String(windowMinutes)]
+    );
+
+    return rows.length ? 'duplicate_submission' : null;
+}
+
+/**
+ * Does one whitespace-delimited token look machine-generated?
+ *
+ * Three cheap signals, two of which must fire. Any one alone has real
+ * false positives — a long acronym, a German compound, a password pasted into
+ * the wrong box — so no single one is trusted.
+ */
+function tokenLooksRandom(token) {
+    const letters = token.replace(/[^A-Za-z]/g, '');
+    if (letters.length < 8) return false;
+
+    let signals = 0;
+
+    // Vowel ratio. Running text sits around 35-45%; a base62 string drifts far
+    // below, keyboard mashing sometimes far above.
+    const vowels = (letters.match(/[aeiou]/gi) || []).length;
+    const ratio = vowels / letters.length;
+    if (ratio < 0.26 || ratio > 0.66) signals += 1;
+
+    // Consonant runs. No natural language stacks five in one syllable.
+    if (/[^aeiou]{5,}/i.test(letters)) signals += 1;
+
+    // Case churn. Real words are lower, Title or UPPER; a random string flips
+    // every few characters.
+    if ((letters.match(/[a-z][A-Z]|[A-Z][a-z]/g) || []).length >= 3) signals += 1;
+
+    return signals >= 2;
+}
+
+/**
+ * URLs, email addresses and file paths are legitimately unpronounceable —
+ * "https://www.example.com/my-itinerary.pdf" trips every signal above — and a
+ * visitor pasting one is the opposite of suspicious. Exclude them before
+ * scoring rather than trying to score them.
+ */
+const OPAQUE_TOKEN = /(:\/\/|@|^www\.|\.[a-z]{2,}\/)/i;
+
+/** Does one field's value read as random characters rather than a message? */
+function valueLooksRandom(value) {
+    const text = String(value === null || value === undefined ? '' : value).trim();
+    if (text.length < 12) return false;
+
+    const tokens = text.split(/\s+/).filter((t) => !OPAQUE_TOKEN.test(t));
+    if (tokens.length === 0) return false;
+
+    // A single unbroken blob is the classic filler — "dpzuDpOBLOdlervZvhwuJlQ".
+    if (tokens.length === 1) return tokenLooksRandom(tokens[0]);
+
+    // Otherwise judge only words long enough to judge, and require most of them
+    // to be soup, so one odd token in a real sentence never trips it.
+    const long = tokens.filter((t) => t.replace(/[^A-Za-z]/g, '').length >= 8);
+    if (long.length === 0) return false;
+    const random = long.filter(tokenLooksRandom).length;
+    return random >= Math.max(2, Math.ceil(long.length * 0.6));
+}
+
+/**
+ * Opt-in content heuristic over the form's free-text fields.
+ *
+ * This is the only check in this file that can be wrong about a real person, so
+ * it is off unless a form turns it on, it looks at free text only — never at a
+ * name, email or phone, where short and unusual values are normal — and a hit
+ * is stored rather than discarded so the admin panel shows what it caught.
+ */
+function checkContent(data, fields, enabled) {
+    if (!enabled) return null;
+
+    const freeText = (Array.isArray(fields) ? fields : [])
+        .filter((f) => f.field_type === 'textarea' || f.field_type === 'text');
+
+    for (const field of freeText) {
+        if (valueLooksRandom(data[field.field_key])) return 'content_random_text';
+    }
+
+    return null;
+}
+
 /** Google reCAPTCHA v3: verify the token and require a minimum score. */
 async function checkRecaptcha(form, token, ip) {
     if (!form.recaptcha_enabled) return null;
@@ -155,6 +301,11 @@ module.exports = {
     checkHoneypot,
     checkTiming,
     checkRateLimit,
+    checkDuplicate,
+    checkContent,
     checkRecaptcha,
-    clientIp
+    payloadHash,
+    clientIp,
+    // exported for the unit tests only
+    valueLooksRandom
 };

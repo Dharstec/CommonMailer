@@ -105,6 +105,9 @@ export class FormBuilderComponent implements OnInit {
     honeypot_field: ['website_url_hp', Validators.required],
     min_submit_seconds: [3],
     max_per_hour_per_ip: [5],
+    require_origin: [true],
+    duplicate_window_minutes: [10],
+    content_filter_enabled: [false],
     recaptcha_enabled: [false],
     recaptcha_site_key: [''],
     recaptcha_secret: [''],
@@ -216,14 +219,27 @@ export class FormBuilderComponent implements OnInit {
         return `  <label>${f.label}</label>\n  <input type="${type}" name="${f.field_key}"${req}>`;
       }).join('\n\n');
 
+    // The honeypot and the timing token are emitted as part of the snippet
+    // rather than documented as an optional extra. Left to opt-in they were
+    // simply never pasted in, which left both checks permanently dormant — a
+    // trap nobody sets catches nobody.
+    const hp = this.form.value.honeypot_field || 'website_url_hp';
+
     return `<form id="cm-form">
 ${inputs}
+
+  <!-- bot traps: leave both of these exactly as they are -->
+  <input type="text" name="${hp}" tabindex="-1" autocomplete="off"
+         style="position:absolute;left:-9999px" aria-hidden="true">
+  <input type="hidden" name="_ts" id="cm-ts">
 
   <button type="submit">Send</button>
   <p id="cm-msg"></p>
 </form>
 
 <script>
+document.getElementById('cm-ts').value = Date.now();
+
 document.getElementById('cm-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   const body = Object.fromEntries(new FormData(e.target).entries());
@@ -392,6 +408,9 @@ document.getElementById('cm-form').addEventListener('submit', async function (e)
           honeypot_field: data.honeypot_field,
           min_submit_seconds: data.min_submit_seconds,
           max_per_hour_per_ip: data.max_per_hour_per_ip,
+          require_origin: data.require_origin,
+          duplicate_window_minutes: data.duplicate_window_minutes,
+          content_filter_enabled: data.content_filter_enabled,
           recaptcha_enabled: data.recaptcha_enabled,
           recaptcha_site_key: data.recaptcha_site_key || '',
           recaptcha_min_score: Number(data.recaptcha_min_score),
@@ -442,6 +461,9 @@ document.getElementById('cm-form').addEventListener('submit', async function (e)
       honeypot_field: raw.honeypot_field,
       min_submit_seconds: Number(raw.min_submit_seconds),
       max_per_hour_per_ip: Number(raw.max_per_hour_per_ip),
+      require_origin: raw.require_origin,
+      duplicate_window_minutes: Number(raw.duplicate_window_minutes),
+      content_filter_enabled: raw.content_filter_enabled,
       recaptcha_enabled: raw.recaptcha_enabled,
       recaptcha_site_key: raw.recaptcha_site_key || null,
       recaptcha_secret: raw.recaptcha_secret || null,

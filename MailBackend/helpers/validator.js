@@ -122,6 +122,10 @@ const formSchema = Joi.object({
     honeypot_field: fieldKey.default('website_url_hp').label('Honeypot field name'),
     min_submit_seconds: Joi.number().integer().min(0).max(120).default(0),
     max_per_hour_per_ip: Joi.number().integer().min(0).max(1000).default(5),
+    require_origin: Joi.boolean().default(true).label('Require a browser Origin'),
+    duplicate_window_minutes: Joi.number().integer().min(0).max(1440).default(10)
+        .label('Duplicate suppression window'),
+    content_filter_enabled: Joi.boolean().default(false).label('Random-text filter'),
     recaptcha_enabled: Joi.boolean().default(false),
     recaptcha_site_key: Joi.string().trim().max(200).allow('', null),
     recaptcha_secret: Joi.string().trim().max(300).allow('', null),

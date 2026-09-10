@@ -61,6 +61,9 @@ async function fakeSuccess(form, ip, reason, req, data) {
             form_id: form.id,
             tenant_id: form.tenant_id,
             data: JSON.stringify(data || {}),
+            // Hashed even here, so a bot that retries a payload we already
+            // dropped is caught by the duplicate check on the way back.
+            payload_hash: data ? antispam.payloadHash(data) : null,
             ip,
             user_agent: (req.headers['user-agent'] || '').slice(0, 500),
             referer: (req.headers.referer || '').slice(0, 500),
@@ -83,7 +86,7 @@ const submitForm = async (req, res) => {
         }
 
         // --- Layer 1: is this website allowed to post here at all? -----------
-        const originReason = antispam.checkOrigin(req.headers.origin, form.allowed_origins);
+        const originReason = antispam.checkOrigin(req.headers.origin, form.allowed_origins, form.require_origin);
         if (originReason) {
             logger.warn('Submit from disallowed origin', {
                 formKey: form.form_key, origin: req.headers.origin, ip, reason: originReason
@@ -123,17 +126,33 @@ const submitForm = async (req, res) => {
             });
         }
 
-        // --- Layer 5: captcha (network call, so it runs last) ---------------
-        const captchaReason = await antispam.checkRecaptcha(form, body._captcha, ip);
-        if (captchaReason) {
-            return res.json(await fakeSuccess(form, ip, captchaReason, req, value));
-        }
-
         // Strip control keys so they never reach the mail template or storage.
+        // Done before the remaining checks so both of them see exactly the
+        // values that would be mailed, and nothing else.
         const data = { ...value };
         delete data._ts;
         delete data._captcha;
         delete data[form.honeypot_field];
+
+        const hash = antispam.payloadHash(data);
+
+        // --- Layer 5: same payload again, already handled -------------------
+        const duplicateReason = await antispam.checkDuplicate(form.id, hash, form.duplicate_window_minutes);
+        if (duplicateReason) {
+            return res.json(await fakeSuccess(form, ip, duplicateReason, req, data));
+        }
+
+        // --- Layer 6: does the free text read as generated? -----------------
+        const contentReason = antispam.checkContent(data, fields, form.content_filter_enabled);
+        if (contentReason) {
+            return res.json(await fakeSuccess(form, ip, contentReason, req, data));
+        }
+
+        // --- Layer 7: captcha (network call, so it runs last) ---------------
+        const captchaReason = await antispam.checkRecaptcha(form, body._captcha, ip);
+        if (captchaReason) {
+            return res.json(await fakeSuccess(form, ip, captchaReason, req, data));
+        }
 
         // --- Store first, mail second ---------------------------------------
         // The submission is the customer's business record; SMTP is the flaky
@@ -145,6 +164,7 @@ const submitForm = async (req, res) => {
                 form_id: form.id,
                 tenant_id: form.tenant_id,
                 data: JSON.stringify(data),
+                payload_hash: hash,
                 ip,
                 user_agent: (req.headers['user-agent'] || '').slice(0, 500),
                 referer: (req.headers.referer || '').slice(0, 500),
