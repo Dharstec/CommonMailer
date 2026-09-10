@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormService, TenantService } from '../../core/services/data.service';
+import { ClipboardService } from '../../core/services/clipboard.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ContactForm, EmailTemplate, FieldType, FormField, FormLinks, Tenant } from '../../core/models';
 import { environment } from 'src/environments/environment';
@@ -124,6 +125,7 @@ export class FormBuilderComponent implements OnInit {
     private router: Router,
     private service: FormService,
     private tenantService: TenantService,
+    private clipboard: ClipboardService,
     private toast: ToastService
   ) {}
 
@@ -254,10 +256,7 @@ document.getElementById('cm-form').addEventListener('submit', async function (e)
   }
 
   copy(text: string, label: string): void {
-    navigator.clipboard.writeText(text).then(
-      () => this.toast.success(`${label} copied.`),
-      () => this.toast.error('Could not copy — select the text and copy manually.')
-    );
+    this.clipboard.copy(text, label);
   }
 
   typeMeta(type: FieldType): FieldTypeMeta | undefined {

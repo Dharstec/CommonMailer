@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { FormService, TenantService } from '../../core/services/data.service';
+import { ClipboardService } from '../../core/services/clipboard.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ContactForm, Tenant } from '../../core/models';
 
@@ -23,6 +24,7 @@ export class FormListComponent implements OnInit {
   constructor(
     private service: FormService,
     private tenantService: TenantService,
+    private clipboard: ClipboardService,
     private toast: ToastService
   ) {}
 
@@ -40,12 +42,7 @@ export class FormListComponent implements OnInit {
   }
 
   copyLink(form: ContactForm): void {
-    const url = form.links?.submit_url;
-    if (!url) return;
-    navigator.clipboard.writeText(url).then(
-      () => this.toast.success('Endpoint copied.'),
-      () => this.toast.error('Could not copy. Select the text and copy manually.')
-    );
+    this.clipboard.copy(form.links?.submit_url || '', 'Endpoint');
   }
 
   askDelete(form: ContactForm): void {
