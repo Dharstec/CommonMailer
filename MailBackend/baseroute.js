@@ -3,6 +3,7 @@ const auth = require("./routes/auth");
 const tenant = require("./routes/tenant");
 const form = require("./routes/form");
 const submission = require("./routes/submission");
+const campaign = require("./routes/campaign");
 const publicRoute = require("./routes/public");
 
 module.exports = function (app) {
@@ -14,4 +15,5 @@ module.exports = function (app) {
     app.use("/api", tenant);
     app.use("/api", form);
     app.use("/api", submission);
+    app.use("/api", campaign);
 };

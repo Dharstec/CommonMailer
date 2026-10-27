@@ -16,4 +16,12 @@ function buildLinks(formKey) {
     };
 }
 
-module.exports = { buildLinks, baseUrl };
+/** Per-recipient links written into every campaign message. */
+function campaignLinks(token) {
+    return {
+        unsubscribe: `${baseUrl()}/api/c/${token}/unsubscribe`,
+        open: `${baseUrl()}/api/c/${token}/open.gif`
+    };
+}
+
+module.exports = { buildLinks, campaignLinks, baseUrl };

@@ -3,6 +3,7 @@
  * at runtime from the database instead — see helpers/dynamicValidator.js.)
  */
 const Joi = require('joi');
+const { DESIGN_KEYS } = require('./campaignRender');
 
 const noHtmlValidator = (value, helpers) => {
     if (typeof value === 'string' && /<[^>]*>/.test(value)) {
@@ -158,6 +159,69 @@ const templateSchema = Joi.object({
     is_active: Joi.boolean().default(true)
 });
 
+const hexColor = Joi.string().trim().pattern(/^#[0-9a-fA-F]{6}$/)
+    .messages({ 'string.pattern.base': '{{#label}} must be a colour like #4f46e5' });
+
+const imageUrl = Joi.string().trim().max(1000).uri({ scheme: ['http', 'https'] });
+
+/**
+ * A button link may carry {{merge}} fields (…?ref={{email}}), which are not
+ * valid URL characters until they are filled in — so they are swapped for a
+ * placeholder before the URL check. A link that is one field on its own, such
+ * as a per-company {{website}} column, can only be checked when it is sent.
+ */
+const linkWithMerge = Joi.string().trim().max(1000).custom((value, helpers) => {
+    if (/^\{\{[^}]+\}\}$/.test(value)) return value;
+    const probe = value.replace(/\{\{[^}]*\}\}/g, 'x');
+    const { error } = Joi.string().uri({ scheme: ['http', 'https', 'mailto', 'tel'] }).validate(probe);
+    return error ? helpers.error('string.uri') : value;
+}).messages({ 'string.uri': '{{#label}} must start with https://, mailto: or tel:' });
+
+const campaignContentSchema = Joi.object({
+    brand_color: hexColor.allow('', null).label('Brand colour'),
+    logo_url: imageUrl.allow('', null).label('Logo URL'),
+    logo_width: Joi.number().integer().min(40).max(300).allow(null).label('Logo width'),
+    hero_image_url: imageUrl.allow('', null).label('Banner image URL'),
+    headline: Joi.string().trim().max(200).allow('', null).label('Headline'),
+    // Free text on purpose: it is escaped when rendered, and the light
+    // formatting (**bold**, - lists) is applied to the escaped text.
+    body: Joi.string().max(20000).allow('', null).label('Message'),
+    cta_text: Joi.string().trim().max(60).allow('', null).label('Button text'),
+    cta_url: linkWithMerge.allow('', null).label('Button link'),
+    signature: Joi.string().max(1000).allow('', null).label('Signature'),
+    footer_text: Joi.string().max(1000).allow('', null).label('Footer')
+}).default({});
+
+const campaignSchema = Joi.object({
+    tenant_id: Joi.number().integer().required().label('Sending account'),
+    name: noHtml().trim().min(2).max(150).required().label('Campaign name'),
+    from_name: noHtml().trim().max(100).allow('', null).label('From name'),
+    from_email: Joi.string().trim().lowercase().email({ tlds: { allow: false } }).max(254).allow('', null).label('From email'),
+    reply_to: Joi.string().trim().lowercase().email({ tlds: { allow: false } }).max(254).allow('', null).label('Reply-To'),
+    // Optional while drafting; starting the campaign is what requires it.
+    subject: Joi.string().trim().max(200).allow('').default('').label('Subject'),
+    preheader: Joi.string().trim().max(250).allow('', null).label('Preview text'),
+    design: Joi.string().valid(...DESIGN_KEYS).default('executive').label('Design'),
+    content: campaignContentSchema,
+    // You author it, like the form templates; recipient values merged into it
+    // are escaped.
+    custom_html: Joi.string().max(200000).allow('', null).label('Custom HTML'),
+    track_opens: Joi.boolean().default(true),
+    rate_per_minute: Joi.number().integer().min(1).max(60).default(20).label('Sending speed'),
+    daily_limit: Joi.number().integer().min(0).max(100000).default(0).label('Daily limit')
+});
+
+/** Preview and test send take the unsaved editor state, so what you see is what you test. */
+const campaignPreviewSchema = campaignSchema.fork(['tenant_id', 'name'], (rule) => rule.optional()).keys({
+    recipient_id: Joi.number().integer().allow(null),
+    to: Joi.string().trim().max(254).allow('', null)
+});
+
+const unsubscribeAddSchema = Joi.object({
+    tenant_id: Joi.number().integer().required().label('Customer'),
+    emails: Joi.string().max(200000).required().label('Email addresses')
+});
+
 /** Express middleware factory: validates req.body and replaces it with the cast value. */
 function validate(schema) {
     return (req, res, next) => {
@@ -174,4 +238,7 @@ function validate(schema) {
     };
 }
 
-module.exports = { tenantSchema, smtpSchema, formSchema, fieldSchema, templateSchema, validate };
+module.exports = {
+    tenantSchema, smtpSchema, formSchema, fieldSchema, templateSchema,
+    campaignSchema, campaignPreviewSchema, unsubscribeAddSchema, validate
+};

@@ -22,7 +22,7 @@ const app = express();
 const ADMIN_ORIGINS = (process.env.FRONTEND_ORIGIN || '').split(',').map((o) => o.trim()).filter(Boolean);
 
 /**
- * Two different CORS policies in one service.
+ * Three CORS policies in one service.
  *
  * The admin API is locked to the origins in FRONTEND_ORIGIN. The form submit
  * endpoint cannot be, because its callers are customer websites we onboard from
@@ -30,6 +30,11 @@ const ADMIN_ORIGINS = (process.env.FRONTEND_ORIGIN || '').split(',').map((o) => 
  * the form's own allowlist inside the handler, which is where the form key (and
  * therefore the allowlist) is actually known. A disallowed site gets a clean
  * 403 from the handler rather than an opaque CORS failure.
+ *
+ * Campaign unsubscribe links and the open pixel (/api/c/) are opened from
+ * inside a mail client, never fetched by script from another site, so they get
+ * no CORS headers at all. They still must not be refused for carrying an
+ * Origin: the unsubscribe page's own button posts with this API's origin.
  */
 const corsOptionsDelegate = (req, callback) => {
     if (req.path.startsWith('/api/form/')) {
@@ -40,6 +45,10 @@ const corsOptionsDelegate = (req, callback) => {
             maxAge: 600,
             optionsSuccessStatus: 204
         });
+    }
+
+    if (req.path.startsWith('/api/c/')) {
+        return callback(null, { origin: false });
     }
 
     return callback(null, {
@@ -138,6 +147,8 @@ app.use((err, req, res, next) => {
  * migrate and auth are required lazily inside the function because requiring
  * them builds the connection pool, and on a fresh box the database does not
  * exist until ensureDatabase() has run.
+ *
+ * The campaign sender starts last: it reads tables the migrations create.
  */
 (async () => {
     try {
@@ -147,9 +158,11 @@ app.use((err, req, res, next) => {
 
         const { runMigrations } = require('./helpers/migrate');
         const { seedFirstAdmin } = require('./models/auth');
+        const campaignWorker = require('./helpers/campaignWorker');
 
         await runMigrations();
         await seedFirstAdmin();
+        await campaignWorker.start();
 
         app.listen(process.env.PORT, () => {
             console.log(`🚀 CommonMailer running on port ${process.env.PORT}`);

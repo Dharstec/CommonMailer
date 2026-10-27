@@ -93,19 +93,26 @@ function invalidate(tenantId) {
  * `replyTo` is how the customer replies straight to the visitor even though the
  * mail is sent from their own mailbox — this is what keeps SPF/DKIM valid. We
  * never forge the visitor's address in From, which would land the mail in spam.
+ *
+ * `fromName` / `fromEmail` let a campaign present itself differently ("Gokul at
+ * Dharstec", or an alias the mailbox may send as). The address object is passed
+ * to Nodemailer rather than a hand-built string so a name containing quotes or
+ * non-ASCII characters is encoded correctly.
  */
-async function sendMail(tenantId, { to, cc, bcc, subject, html, text, replyTo }) {
+async function sendMail(tenantId, { to, cc, bcc, subject, html, text, replyTo, fromName, fromEmail, attachments, headers }) {
     const { transporter, smtp } = await getTransporter(tenantId);
 
     const info = await transporter.sendMail({
-        from: `"${smtp.from_name}" <${smtp.from_email}>`,
+        from: { name: fromName || smtp.from_name, address: fromEmail || smtp.from_email },
         to: Array.isArray(to) ? to.join(', ') : to,
         cc: cc && cc.length ? cc.join(', ') : undefined,
         bcc: bcc && bcc.length ? bcc.join(', ') : undefined,
         replyTo: replyTo || smtp.reply_to || undefined,
         subject,
         html,
-        text
+        text,
+        attachments: attachments && attachments.length ? attachments : undefined,
+        headers: headers || undefined
     });
 
     logger.info('Mail sent', { tenantId, to, subject, messageId: info.messageId });

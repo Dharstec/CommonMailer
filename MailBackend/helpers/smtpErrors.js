@@ -66,6 +66,19 @@ const RULES = [
         message: () => 'The server accepted the login but refused the sender address.\n\n'
             + '"From email" must be a mailbox this account is allowed to send as. For Gmail that means the '
             + 'account address itself, or a verified alias.'
+    },
+    {
+        // The mailbox's own sending allowance is used up. Only campaigns get here.
+        test: (m) => /quota|sending limit|limit exceeded|daily user sending|too many (messages|recipients)|5\.4\.5/i.test(m),
+        message: () => 'The mailbox has reached its sending limit.\n\n'
+            + 'Gmail allows about 500 recipients a day and Google Workspace about 2,000, counted over the last '
+            + '24 hours. Resume the campaign tomorrow, and set a daily limit on it so it spreads itself out.'
+    },
+    {
+        test: (m) => /5\.3\.4|message size|too large|size exceeds/i.test(m),
+        message: () => 'The mail server refused the message because it is too large.\n\n'
+            + 'Most providers cap one email at 20–25 MB, and attachments grow by about a third when sent. '
+            + 'Remove or shrink an attachment, or share it as a link.'
     }
 ];
 
