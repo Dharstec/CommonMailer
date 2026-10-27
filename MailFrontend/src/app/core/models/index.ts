@@ -162,6 +162,135 @@ export interface Submission {
   fields?: FormField[];
 }
 
+export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'paused' | 'completed' | 'cancelled';
+export type CampaignDesign = 'executive' | 'spotlight' | 'aurora' | 'personal' | 'custom';
+export type RecipientStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'skipped';
+
+/** The structured fields a design renders. Custom HTML campaigns use custom_html instead. */
+export interface CampaignContent {
+  brand_color?: string | null;
+  logo_url?: string | null;
+  logo_width?: number | null;
+  hero_image_url?: string | null;
+  headline?: string | null;
+  body?: string | null;
+  cta_text?: string | null;
+  cta_url?: string | null;
+  signature?: string | null;
+  footer_text?: string | null;
+}
+
+export interface CampaignStats {
+  total: number;
+  pending: number;
+  sending: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  opened: number;
+  unsubscribed: number;
+}
+
+export interface CampaignAttachment {
+  id: number;
+  filename: string;
+  content_type?: string | null;
+  size_bytes: number;
+  created_at?: string;
+}
+
+/** What the last recipient upload contained — kept so the panel can show it again later. */
+export interface ImportSummary {
+  filename?: string | null;
+  total_rows: number;
+  imported: number;
+  invalid_count: number;
+  invalid: { row: number; value: string; reason: string }[];
+  duplicates: number;
+  suppressed: number;
+  columns: string[];
+  uploaded_at?: string;
+}
+
+/** The customer's SMTP account as the campaign will use it. */
+export interface CampaignSender {
+  configured: boolean;
+  verified: boolean;
+  from_name: string | null;
+  from_email: string | null;
+  reply_to: string | null;
+}
+
+export interface Campaign {
+  id?: number;
+  tenant_id: number | null;
+  tenant_name?: string;
+  name: string;
+  status?: CampaignStatus;
+
+  from_name?: string | null;
+  from_email?: string | null;
+  reply_to?: string | null;
+  subject: string;
+  preheader?: string | null;
+
+  design: CampaignDesign;
+  content: CampaignContent;
+  custom_html?: string | null;
+
+  columns?: string[];
+  import_summary?: ImportSummary | null;
+
+  track_opens: boolean;
+  rate_per_minute: number;
+  daily_limit: number;
+  scheduled_at?: string | null;
+  next_send_at?: string | null;
+  status_reason?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+
+  stats?: CampaignStats;
+  attachments?: CampaignAttachment[];
+  sender?: CampaignSender;
+  editable?: { content: boolean; recipients: boolean };
+}
+
+export interface CampaignRecipient {
+  id: number;
+  email: string;
+  data: Record<string, string>;
+  status: RecipientStatus;
+  error?: string | null;
+  attempted_at?: string | null;
+  sent_at?: string | null;
+  opened_at?: string | null;
+  open_count: number;
+  unsubscribed_at?: string | null;
+}
+
+export interface CampaignPreview {
+  subject: string;
+  preheader: string;
+  html: string;
+  text: string;
+  from_name: string;
+  from_email: string;
+  to: string;
+  recipient_id: number | null;
+  sample: boolean;
+}
+
+export interface CampaignUnsubscribe {
+  id: number;
+  email: string;
+  source: 'link' | 'one_click' | 'manual';
+  campaign_name?: string | null;
+  created_at: string;
+}
+
 export interface DashboardStats {
   active_tenants: number;
   active_forms: number;

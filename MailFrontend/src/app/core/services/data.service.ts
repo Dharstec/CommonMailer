@@ -2,7 +2,8 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 import {
-  ApiResponse, ContactForm, DashboardStats, EmailTemplate, Submission, Tenant, TenantSmtp
+  ApiResponse, Campaign, CampaignAttachment, CampaignPreview, CampaignRecipient, CampaignUnsubscribe,
+  ContactForm, DashboardStats, EmailTemplate, ImportSummary, Submission, Tenant, TenantSmtp
 } from '../models';
 
 /** Customers and their sending accounts. */
@@ -69,4 +70,56 @@ export class SubmissionService {
   resend(id: number): Observable<ApiResponse<null>> { return this.api.post(`submissions/${id}/resend`, {}); }
   remove(id: number): Observable<ApiResponse<null>> { return this.api.delete(`submissions/${id}`); }
   exportCsv(query: Record<string, any>) { return this.api.download('submissions/export', query); }
+}
+
+/** Campaigns: one message, a recipient list, and the sending that follows. */
+@Injectable({ providedIn: 'root' })
+export class CampaignService {
+  constructor(private api: ApiService) {}
+
+  list(query: Record<string, any> = {}): Observable<Campaign[]> { return this.api.get<Campaign[]>('campaigns', query); }
+  get(id: number): Observable<Campaign> { return this.api.get<Campaign>(`campaigns/${id}`); }
+  create(body: Campaign): Observable<ApiResponse<Campaign>> { return this.api.post('campaigns', body); }
+  update(id: number, body: Campaign): Observable<ApiResponse<Campaign>> { return this.api.put(`campaigns/${id}`, body); }
+  remove(id: number): Observable<ApiResponse<null>> { return this.api.delete(`campaigns/${id}`); }
+  duplicate(id: number): Observable<ApiResponse<Campaign>> { return this.api.post(`campaigns/${id}/duplicate`, {}); }
+
+  recipients(id: number, query: Record<string, any>): Observable<ApiResponse<CampaignRecipient[]>> {
+    return this.api.getFull<CampaignRecipient[]>(`campaigns/${id}/recipients`, query);
+  }
+  uploadRecipients(id: number, file: Blob, filename: string): Observable<ApiResponse<ImportSummary>> {
+    return this.api.upload(`campaigns/${id}/recipients`, file, { filename });
+  }
+  clearRecipients(id: number): Observable<ApiResponse<null>> { return this.api.delete(`campaigns/${id}/recipients`); }
+  exportRecipients(id: number): Observable<Blob> { return this.api.download(`campaigns/${id}/recipients/export`); }
+
+  uploadAttachment(id: number, file: File): Observable<ApiResponse<CampaignAttachment>> {
+    return this.api.upload(`campaigns/${id}/attachments`, file, { filename: file.name, type: file.type });
+  }
+  removeAttachment(id: number, attachmentId: number): Observable<ApiResponse<null>> {
+    return this.api.delete(`campaigns/${id}/attachments/${attachmentId}`);
+  }
+
+  /** Both take the editor's unsaved state, so what you preview is what you test. */
+  preview(id: number, body: Campaign & { recipient_id?: number | null }): Observable<ApiResponse<CampaignPreview>> {
+    return this.api.post(`campaigns/${id}/preview`, body);
+  }
+  sendTest(id: number, body: Campaign & { to: string; recipient_id?: number | null }): Observable<ApiResponse<null>> {
+    return this.api.post(`campaigns/${id}/test`, body);
+  }
+
+  start(id: number, scheduledAt: string | null = null): Observable<ApiResponse<null>> {
+    return this.api.post(`campaigns/${id}/start`, { scheduled_at: scheduledAt });
+  }
+  pause(id: number): Observable<ApiResponse<null>> { return this.api.post(`campaigns/${id}/pause`, {}); }
+  cancel(id: number): Observable<ApiResponse<null>> { return this.api.post(`campaigns/${id}/cancel`, {}); }
+  retryFailed(id: number): Observable<ApiResponse<null>> { return this.api.post(`campaigns/${id}/retry-failed`, {}); }
+
+  unsubscribes(tenantId: number): Observable<CampaignUnsubscribe[]> {
+    return this.api.get<CampaignUnsubscribe[]>('campaigns/unsubscribes', { tenant_id: tenantId });
+  }
+  addUnsubscribes(tenantId: number, emails: string): Observable<ApiResponse<null>> {
+    return this.api.post('campaigns/unsubscribes', { tenant_id: tenantId, emails });
+  }
+  removeUnsubscribe(id: number): Observable<ApiResponse<null>> { return this.api.delete(`campaigns/unsubscribes/${id}`); }
 }

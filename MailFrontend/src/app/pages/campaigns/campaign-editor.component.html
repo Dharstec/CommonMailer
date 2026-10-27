@@ -1,0 +1,1022 @@
+<div class="max-w-7xl mx-auto space-y-5">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <a routerLink="/campaigns" class="text-slate-400 hover:text-slate-600 shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <h1 class="text-2xl font-bold text-slate-900 truncate">{{ isNew ? 'New campaign' : (campaign.name || 'Untitled campaign') }}</h1>
+          <span *ngIf="!isNew" [ngClass]="statusClass(campaign.status)" class="shrink-0 gap-1.5">
+            <span *ngIf="campaign.status === 'sending'" class="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
+            {{ statusLabels[campaign.status || 'draft'] }}
+          </span>
+        </div>
+        <p *ngIf="!isNew" class="text-sm text-slate-500 mt-0.5 truncate">
+          {{ campaign.tenant_name }} &middot; {{ stats.total | number }} recipient(s)
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span *ngIf="dirty && !isNew && canEditContent" class="text-xs font-medium text-amber-600">Unsaved changes</span>
+      <button *ngIf="canEditContent" type="button" class="btn-primary" [disabled]="saving" (click)="save()">
+        {{ saving ? 'Saving...' : (isNew ? 'Create campaign' : 'Save') }}
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <ng-container *ngIf="!loading">
+    <!-- Steps -->
+    <div class="border-b border-slate-200 flex gap-1 overflow-x-auto">
+      <button type="button" *ngFor="let t of tabs" (click)="go(t.key)"
+              class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition"
+              [ngClass]="tab === t.key
+                ? 'border-brand-600 text-brand-600'
+                : (isNew && t.key !== 'details' ? 'border-transparent text-slate-300 cursor-not-allowed' : 'border-transparent text-slate-500 hover:text-slate-700')">
+        {{ t.label }}
+        <span *ngIf="t.key === 'recipients' && stats.total" class="ml-1 text-xs text-slate-400">({{ stats.total | number }})</span>
+        <span *ngIf="t.key === 'report' && campaign.status === 'sending'" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse align-middle"></span>
+      </button>
+    </div>
+
+    <div *ngIf="!isNew && !canEditContent && tab !== 'report'"
+         class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-600">
+      {{ campaign.status === 'sending'
+        ? 'This campaign is sending, so it is read-only. Pause it to make changes.'
+        : 'This campaign has finished and is read-only. Duplicate it to send a new version.' }}
+    </div>
+
+    <!-- ===================================================== DETAILS ==== -->
+    <div *ngIf="tab === 'details'" class="grid gap-5 lg:grid-cols-5 items-start">
+      <fieldset class="lg:col-span-3 space-y-5 min-w-0" [disabled]="!canEditContent" (input)="changed()" (change)="changed()">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Sender</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Campaigns go out from the customer's own mailbox, so they pass SPF and DKIM.</p>
+            </div>
+          </div>
+          <div class="card-body grid gap-4 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+              <label class="label">Campaign name <span class="text-red-500">*</span></label>
+              <input class="input" [(ngModel)]="campaign.name" maxlength="150" placeholder="October outreach — textile companies"/>
+              <p class="hint">Only you see this.</p>
+            </div>
+
+            <div class="sm:col-span-2">
+              <label class="label">Send from <span class="text-red-500">*</span></label>
+              <select class="input" [ngModel]="campaign.tenant_id" (ngModelChange)="selectTenant($event)"
+                      [disabled]="!isNew && !canEditRecipients">
+                <option [ngValue]="null">Choose a customer</option>
+                <option *ngFor="let t of tenants" [ngValue]="t.id">{{ t.name }}</option>
+              </select>
+              <div class="mt-2 text-sm" [ngSwitch]="senderState">
+                <p *ngSwitchCase="'ok'" class="text-emerald-700">
+                  &#10003; Sends from <span class="font-medium">{{ sender?.from_email || 'the customer\'s mailbox' }}</span> — connection tested.
+                </p>
+                <p *ngSwitchCase="'untested'" class="text-amber-700">
+                  SMTP is set up but not tested yet.
+                  <a [routerLink]="['/customers', campaign.tenant_id]" class="font-medium underline">Test it on the customer page</a>,
+                  or send yourself a test email in step 4.
+                </p>
+                <p *ngSwitchCase="'missing'" class="text-red-700">
+                  This customer has no SMTP account yet.
+                  <a [routerLink]="['/customers', campaign.tenant_id]" class="font-medium underline">Set it up first</a>.
+                </p>
+              </div>
+              <p *ngIf="!tenants.length" class="hint">
+                No customers yet. <a routerLink="/customers/new" class="underline">Add one</a> with its SMTP account first.
+              </p>
+            </div>
+
+            <div>
+              <label class="label">From name</label>
+              <input class="input" [(ngModel)]="campaign.from_name" maxlength="100"
+                     [placeholder]="sender?.from_name || tenant?.name || 'Gokul at Dharstec'"/>
+              <p class="hint">A person's name gets more opens than a company's — try "Gokul at Dharstec".</p>
+            </div>
+
+            <div>
+              <label class="label">From email</label>
+              <input class="input" type="email" [(ngModel)]="campaign.from_email"
+                     [placeholder]="sender?.from_email || 'The account address'"/>
+              <p class="hint" [class.!text-amber-700]="fromDomainWarning">
+                {{ fromDomainWarning
+                  ? 'A different domain from the account — this will likely land in spam or be refused.'
+                  : 'Leave blank to use the account. Change it only to an alias this mailbox may send as.' }}
+              </p>
+            </div>
+
+            <div class="sm:col-span-2">
+              <label class="label">Reply-To</label>
+              <input class="input" type="email" [(ngModel)]="campaign.reply_to"
+                     [placeholder]="sender?.reply_to || sender?.from_email || 'Replies go to the From address'"/>
+              <p class="hint">Where replies land — for example a salesperson's own inbox.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Subject and preview text</h2>
+              <p class="text-xs text-slate-500 mt-0.5">The two lines that decide whether the email is opened at all.</p>
+            </div>
+          </div>
+          <div class="card-body space-y-4">
+            <div>
+              <div class="flex items-baseline justify-between">
+                <label class="label">Subject <span class="text-red-500">*</span></label>
+                <span class="text-xs text-slate-400">{{ (campaign.subject || '').length }}/200</span>
+              </div>
+              <input class="input text-base" [(ngModel)]="campaign.subject" (focus)="remember('subject', $event)" maxlength="200"/>
+            </div>
+
+            <ng-container *ngTemplateOutlet="mergeChips"></ng-container>
+
+            <div>
+              <div class="flex items-baseline justify-between">
+                <label class="label">Preview text</label>
+                <span class="text-xs text-slate-400">{{ (campaign.preheader || '').length }}/250</span>
+              </div>
+              <input class="input" [(ngModel)]="campaign.preheader" (focus)="remember('preheader', $event)" maxlength="250"
+                     placeholder="The grey line shown after the subject in the inbox"/>
+              <p class="hint" [class.!text-amber-700]="!preheaderTip.good" [class.!text-emerald-700]="preheaderTip.good">{{ preheaderTip.text }}</p>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- What the recipient sees before opening -->
+      <div class="lg:col-span-2 space-y-5 lg:sticky lg:top-20">
+        <div class="card overflow-hidden">
+          <div class="card-head">
+            <h2 class="font-semibold text-slate-900">In their inbox</h2>
+            <span *ngIf="preview && !preview.sample" class="text-xs text-slate-400 truncate">as {{ preview.to }}</span>
+          </div>
+          <div class="bg-slate-100 p-4 space-y-2">
+            <div class="rounded-xl bg-white border border-slate-200 shadow-sm p-3.5 flex gap-3">
+              <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shrink-0"
+                   [style.background]="brandColor">{{ inbox.initial }}</div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline justify-between gap-2">
+                  <p class="text-sm font-bold text-slate-900 truncate">{{ inbox.from }}</p>
+                  <span class="text-xs font-semibold text-brand-600 shrink-0">9:41</span>
+                </div>
+                <p class="text-sm font-semibold text-slate-800 truncate">{{ inbox.subject }}</p>
+                <p class="text-sm text-slate-500 truncate">{{ inbox.preheader || 'No preview text — the inbox will show the first words of the email.' }}</p>
+              </div>
+            </div>
+            <div *ngFor="let n of [1, 2]" class="rounded-xl bg-white/60 border border-slate-200 p-3.5 flex gap-3 opacity-60">
+              <div class="w-10 h-10 rounded-full bg-slate-200 shrink-0"></div>
+              <div class="flex-1 space-y-2 py-1">
+                <div class="h-2 w-24 rounded-full bg-slate-300"></div>
+                <div class="h-2 w-40 rounded-full bg-slate-200"></div>
+                <div class="h-2 w-32 rounded-full bg-slate-200"></div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body space-y-2" *ngIf="subjectTips.length">
+            <p *ngFor="let tip of subjectTips" class="text-sm flex gap-2"
+               [ngClass]="tip.good ? 'text-emerald-700' : 'text-amber-700'">
+              <span class="shrink-0 font-bold">{{ tip.good ? '✓' : '!' }}</span>
+              <span>{{ tip.text }}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================== RECIPIENTS ==== -->
+    <div *ngIf="tab === 'recipients'" class="space-y-5">
+      <div *ngIf="!canEditRecipients" class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-600">
+        The list is locked because sending has started. Duplicate the campaign to send to a different list.
+      </div>
+
+      <div *ngIf="canEditRecipients" class="grid gap-5 lg:grid-cols-5 items-start">
+        <div class="card lg:col-span-3">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Upload the list</h2>
+              <p class="text-xs text-slate-500 mt-0.5">A CSV with one row per person. Uploading again replaces the list.</p>
+            </div>
+          </div>
+          <div class="card-body space-y-4">
+            <label class="block rounded-xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition"
+                   [ngClass]="dragOver ? 'border-brand-500 bg-brand-50' : 'border-slate-300 hover:border-brand-400 hover:bg-slate-50'"
+                   (dragover)="$event.preventDefault(); dragOver = true" (dragleave)="dragOver = false" (drop)="onListDrop($event)">
+              <input type="file" accept=".csv,.txt,text/csv,text/plain" class="hidden" [disabled]="uploading" (change)="onListFile($event)"/>
+              <div class="mx-auto w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center">
+                <svg *ngIf="!uploading" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                <span *ngIf="uploading" class="w-5 h-5 rounded-full border-2 border-brand-500 border-t-transparent animate-spin"></span>
+              </div>
+              <p class="mt-3 text-sm font-medium text-slate-900">{{ uploading ? 'Reading your list...' : 'Drop your CSV here, or click to choose a file' }}</p>
+              <p class="mt-1 text-xs text-slate-500">CSV or TXT &middot; up to 20,000 rows &middot; 5 MB</p>
+            </label>
+
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" class="btn-ghost btn-sm" (click)="pasteOpen = !pasteOpen">
+                {{ pasteOpen ? 'Hide paste box' : 'Or paste addresses' }}
+              </button>
+              <button type="button" class="btn-ghost btn-sm" (click)="downloadSample()">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Sample CSV
+              </button>
+            </div>
+
+            <div *ngIf="pasteOpen">
+              <textarea class="input font-mono text-xs" rows="7" [(ngModel)]="pasteText"
+                        placeholder="One address per line, or paste rows from Excel including the header:&#10;email,first_name,company&#10;priya@acmetextiles.in,Priya,Acme Textiles"></textarea>
+              <div class="mt-2 flex justify-end">
+                <button type="button" class="btn-primary btn-sm" [disabled]="uploading || !pasteText.trim()" (click)="importPasted()">
+                  Import pasted list
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card lg:col-span-2">
+          <div class="card-head"><h2 class="font-semibold text-slate-900">The CSV format</h2></div>
+          <div class="card-body space-y-4 text-sm">
+            <table class="w-full text-left">
+              <tbody class="divide-y divide-slate-100">
+                <tr>
+                  <td class="py-2 pr-3 align-top font-mono text-xs text-brand-700">email</td>
+                  <td class="py-2 text-slate-600"><span class="font-medium text-slate-900">Required.</span> "E-mail", "Email ID" and "Email Address" also work.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-3 align-top font-mono text-xs text-brand-700">first_name</td>
+                  <td class="py-2 text-slate-600">For "Hi Priya". Taken from a <span class="font-mono text-xs">name</span> column when missing.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-3 align-top font-mono text-xs text-brand-700">company</td>
+                  <td class="py-2 text-slate-600">Optional. "Company Name" and "Organisation" also work.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-3 align-top font-mono text-xs text-brand-700 whitespace-nowrap">any other</td>
+                  <td class="py-2 text-slate-600">Becomes a merge field — a <span class="font-mono text-xs">city</span> column gives you <span class="font-mono text-xs">{{ token('city') }}</span>.</td>
+                </tr>
+              </tbody>
+            </table>
+            <ul class="list-disc pl-4 space-y-1.5 text-xs text-slate-600">
+              <li>From Excel: <span class="font-medium">File &rarr; Save As &rarr; CSV UTF-8</span>. Semicolon and tab separated files work too.</li>
+              <li>Invalid addresses, typos like <span class="font-mono">gmial.com</span> and duplicates are skipped and listed below.</li>
+              <li>People who unsubscribed from this customer before are left out automatically.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="importSummary" class="card">
+        <div class="card-head">
+          <div class="min-w-0">
+            <h2 class="font-semibold text-slate-900">{{ importRejected ? 'Nothing was imported from that file' : 'Last upload' }}</h2>
+            <p class="text-xs text-slate-500 mt-0.5 truncate">
+              {{ importSummary.filename || 'Recipient list' }} &middot; {{ importSummary.total_rows | number }} row(s) read
+              <ng-container *ngIf="importSummary.uploaded_at">&middot; {{ importSummary.uploaded_at | date:'d MMM, h:mm a' }}</ng-container>
+            </p>
+          </div>
+        </div>
+        <div class="card-body space-y-5">
+          <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
+            <div class="rounded-lg bg-emerald-50 border border-emerald-100 px-4 py-3">
+              <p class="text-2xl font-bold text-emerald-700">{{ importSummary.imported | number }}</p>
+              <p class="text-xs font-medium text-emerald-800">Ready to send</p>
+            </div>
+            <div class="rounded-lg px-4 py-3 border" [ngClass]="importSummary.invalid_count ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-200'">
+              <p class="text-2xl font-bold" [ngClass]="importSummary.invalid_count ? 'text-red-700' : 'text-slate-900'">{{ importSummary.invalid_count | number }}</p>
+              <p class="text-xs font-medium text-slate-600">Invalid, skipped</p>
+            </div>
+            <div class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
+              <p class="text-2xl font-bold text-slate-900">{{ importSummary.duplicates | number }}</p>
+              <p class="text-xs font-medium text-slate-600">Duplicates removed</p>
+            </div>
+            <div class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
+              <p class="text-2xl font-bold text-slate-900">{{ importSummary.suppressed | number }}</p>
+              <p class="text-xs font-medium text-slate-600">Unsubscribed earlier</p>
+            </div>
+          </div>
+
+          <div *ngIf="importSummary.invalid.length">
+            <p class="text-sm font-medium text-slate-700 mb-2">Rows that were skipped — fix them in the file and upload again</p>
+            <div class="rounded-lg border border-slate-200 max-h-64 overflow-y-auto divide-y divide-slate-100">
+              <div *ngFor="let row of importSummary.invalid" class="px-3 py-2 grid grid-cols-[4.5rem_1fr] gap-3 text-sm">
+                <span class="font-mono text-xs text-slate-400 pt-0.5">Row {{ row.row }}</span>
+                <span class="min-w-0">
+                  <span class="font-mono text-slate-900 break-all">{{ row.value || '(empty)' }}</span>
+                  <span class="block text-xs text-red-600">{{ row.reason }}</span>
+                </span>
+              </div>
+            </div>
+            <p *ngIf="importSummary.invalid_count > importSummary.invalid.length" class="hint">
+              ...and {{ importSummary.invalid_count - importSummary.invalid.length | number }} more.
+            </p>
+          </div>
+
+          <div *ngIf="importSummary.columns.length">
+            <p class="text-sm font-medium text-slate-700 mb-2">Merge fields from this file</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span *ngFor="let col of importSummary.columns" class="badge-mute font-mono">{{ token(col) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ng-container *ngIf="stats.total">
+        <div *ngIf="canEditRecipients" class="flex justify-end">
+          <button type="button" class="btn-ghost btn-sm !text-red-600" (click)="confirmClearOpen = true">Clear the list</button>
+        </div>
+        <ng-container *ngTemplateOutlet="recipientTable"></ng-container>
+      </ng-container>
+    </div>
+
+    <!-- ===================================================== CONTENT ==== -->
+    <div *ngIf="tab === 'content'" class="grid gap-6 xl:grid-cols-2 items-start">
+      <fieldset class="space-y-5 min-w-0" [disabled]="!canEditContent" (input)="changed()" (change)="changed()">
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Design</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Switch any time — your text stays.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <button *ngFor="let d of designs" type="button" (click)="selectDesign(d.key)"
+                      class="text-left rounded-xl border-2 p-2 transition disabled:cursor-not-allowed"
+                      [ngClass]="campaign.design === d.key ? 'border-brand-600 ring-4 ring-brand-100' : 'border-slate-200 hover:border-slate-300'">
+                <div class="h-24 rounded-lg overflow-hidden" [ngSwitch]="d.key">
+                  <div *ngSwitchCase="'executive'" class="h-full bg-slate-100 p-2.5">
+                    <div class="h-full rounded-md bg-white border-t-4 p-2 space-y-1.5" [style.border-top-color]="brandColor">
+                      <div class="h-1.5 w-10 rounded-full bg-slate-800"></div>
+                      <div class="h-1 w-16 rounded-full bg-slate-200"></div>
+                      <div class="h-1 w-14 rounded-full bg-slate-200"></div>
+                      <div class="h-2.5 w-9 rounded" [style.background]="brandColor"></div>
+                    </div>
+                  </div>
+                  <div *ngSwitchCase="'spotlight'" class="h-full p-2.5" [style.background]="brandColor + '1f'">
+                    <div class="h-full rounded-md bg-white overflow-hidden flex flex-col">
+                      <div class="h-5 flex items-center justify-center" [style.background]="brandColor">
+                        <div class="h-1 w-8 rounded-full bg-white/80"></div>
+                      </div>
+                      <div class="flex-1 flex flex-col items-center justify-center gap-1.5">
+                        <div class="h-1.5 w-14 rounded-full bg-slate-800"></div>
+                        <div class="h-0.5 w-5 rounded-full" [style.background]="brandColor"></div>
+                        <div class="h-2.5 w-10 rounded" [style.background]="brandColor"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div *ngSwitchCase="'aurora'" class="h-full bg-slate-100 p-2.5">
+                    <div class="h-full rounded-md bg-white overflow-hidden flex flex-col">
+                      <div class="h-11 relative p-2" [style.background]="brandColor">
+                        <div class="absolute inset-0 bg-gradient-to-br from-transparent via-fuchsia-500/20 to-black/40"></div>
+                        <div class="relative h-1 w-6 rounded-full bg-white/70"></div>
+                        <div class="relative mt-2 h-1.5 w-14 rounded-full bg-white"></div>
+                      </div>
+                      <div class="p-2 space-y-1">
+                        <div class="h-1 w-16 rounded-full bg-slate-200"></div>
+                        <div class="h-2.5 w-9 rounded" [style.background]="brandColor"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div *ngSwitchCase="'personal'" class="h-full bg-white border border-slate-200 rounded-lg p-3 space-y-1.5">
+                    <div class="h-1 w-8 rounded-full bg-slate-400"></div>
+                    <div class="h-1 w-20 rounded-full bg-slate-300"></div>
+                    <div class="h-1 w-16 rounded-full bg-slate-300"></div>
+                    <div class="h-1 w-10 rounded-full" [style.background]="brandColor"></div>
+                    <div class="h-1 w-6 rounded-full bg-slate-400"></div>
+                  </div>
+                  <div *ngSwitchCase="'custom'" class="h-full bg-slate-900 flex items-center justify-center font-mono text-sm text-emerald-300">&lt;/&gt;</div>
+                </div>
+                <p class="mt-2 px-1 text-sm font-semibold text-slate-900">{{ d.label }}</p>
+                <p class="px-1 text-xs text-slate-500 leading-snug">{{ d.blurb }}</p>
+              </button>
+            </div>
+            <p class="mt-4 rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-sm text-brand-900">
+              <span class="font-semibold">Best for:</span> {{ selectedDesign.best }}
+            </p>
+          </div>
+        </div>
+
+        <div *ngIf="campaign.design !== 'custom'" class="card">
+          <div class="card-head"><h2 class="font-semibold text-slate-900">Brand</h2></div>
+          <div class="card-body space-y-4">
+            <div>
+              <label class="label">Brand colour</label>
+              <div class="flex flex-wrap items-center gap-2">
+                <input type="color" class="h-10 w-14 rounded-lg border border-slate-300 bg-white p-1 cursor-pointer"
+                       [ngModel]="brandColor" (ngModelChange)="setBrand($event)"/>
+                <input class="input !w-28 font-mono" [(ngModel)]="campaign.content.brand_color" maxlength="7" placeholder="#4f46e5"/>
+                <button *ngFor="let s of swatches" type="button" class="w-7 h-7 rounded-full ring-2 ring-offset-2 transition"
+                        [style.background]="s" [title]="s" (click)="setBrand(s)"
+                        [ngClass]="brandColor.toLowerCase() === s ? 'ring-slate-900' : 'ring-transparent hover:ring-slate-300'"></button>
+              </div>
+              <p class="hint">Used for the button, links and accents. Text colours adjust automatically so they stay readable.</p>
+            </div>
+
+            <ng-container *ngIf="rich">
+              <div class="grid gap-4 sm:grid-cols-[1fr_9rem]">
+                <div>
+                  <label class="label">Logo URL</label>
+                  <input class="input" [(ngModel)]="campaign.content.logo_url" placeholder="https://yoursite.com/logo.png"/>
+                </div>
+                <div>
+                  <label class="label">Logo width (px)</label>
+                  <input class="input" type="number" min="40" max="300" [(ngModel)]="campaign.content.logo_width"/>
+                </div>
+              </div>
+              <p class="hint -mt-2">A PNG hosted on the customer's website works best. Without one, the company name is shown as text.</p>
+              <div>
+                <label class="label">Banner image URL</label>
+                <input class="input" [(ngModel)]="campaign.content.hero_image_url" placeholder="https://yoursite.com/banner.jpg"/>
+                <p class="hint">Optional; 1200 &times; 600 px looks sharp. Many inboxes hide images until the reader allows them, so keep the key message in the text.</p>
+              </div>
+            </ng-container>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Message</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Merge fields work in every box below.</p>
+            </div>
+          </div>
+          <div class="card-body space-y-4">
+            <ng-container *ngTemplateOutlet="mergeChips"></ng-container>
+
+            <ng-container *ngIf="campaign.design !== 'custom'">
+              <div *ngIf="rich">
+                <label class="label">Headline</label>
+                <input class="input text-base font-semibold" [(ngModel)]="campaign.content.headline"
+                       (focus)="remember('headline', $event)" maxlength="200"/>
+              </div>
+
+              <div>
+                <div class="flex items-baseline justify-between">
+                  <label class="label">Message</label>
+                  <button type="button" class="text-xs font-medium text-brand-600 hover:underline" (click)="formattingOpen = !formattingOpen">
+                    Formatting help
+                  </button>
+                </div>
+                <textarea class="input text-sm leading-relaxed" rows="14" [(ngModel)]="campaign.content.body"
+                          (focus)="remember('body', $event)"></textarea>
+                <div *ngIf="formattingOpen" class="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-3 grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-600">
+                  <span><code class="font-mono text-slate-900">**bold**</code> &rarr; <b>bold</b></span>
+                  <span><code class="font-mono text-slate-900">- point</code> &rarr; check-mark list</span>
+                  <span><code class="font-mono text-slate-900">1. step</code> &rarr; numbered list</span>
+                  <span><code class="font-mono text-slate-900">## Title</code> &rarr; sub-heading</span>
+                  <span><code class="font-mono text-slate-900">[text](https://...)</code> &rarr; link</span>
+                  <span><code class="font-mono text-slate-900">---</code> &rarr; divider line</span>
+                  <span class="sm:col-span-2">A blank line starts a new paragraph. Plain https:// links become clickable by themselves.</span>
+                </div>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="label">{{ rich ? 'Button text' : 'Link text' }}</label>
+                  <input class="input" [(ngModel)]="campaign.content.cta_text" (focus)="remember('cta_text', $event)" maxlength="60"/>
+                </div>
+                <div>
+                  <label class="label">{{ rich ? 'Button link' : 'Link URL' }}</label>
+                  <input class="input" [(ngModel)]="campaign.content.cta_url" (focus)="remember('cta_url', $event)"
+                         placeholder="https://yoursite.com/contact"/>
+                </div>
+              </div>
+              <p class="hint -mt-2">
+                Leave the link empty to hide the {{ rich ? 'button' : 'link' }}. One clear next step works better than three.
+              </p>
+
+              <div>
+                <label class="label">Signature</label>
+                <textarea class="input text-sm" rows="4" [(ngModel)]="campaign.content.signature" (focus)="remember('signature', $event)"
+                          placeholder="Warm regards,&#10;Your name&#10;Title, Company&#10;Phone &middot; website"></textarea>
+                <p class="hint">The line after "Warm regards," is shown in bold as your name.</p>
+              </div>
+            </ng-container>
+
+            <div *ngIf="campaign.design === 'custom'">
+              <label class="label">Your HTML</label>
+              <textarea class="input font-mono text-xs" rows="22" spellcheck="false" [(ngModel)]="campaign.custom_html"
+                        (focus)="remember('custom_html', $event)"></textarea>
+              <p class="hint">
+                Use inline styles — most mail clients ignore style sheets. Put <code class="font-mono">{{ unsubscribeToken }}</code>
+                in your own unsubscribe link, or a standard footer is added for you.
+              </p>
+            </div>
+
+            <div>
+              <label class="label">Footer — the postal address</label>
+              <textarea class="input text-sm" rows="2" [(ngModel)]="campaign.content.footer_text" (focus)="remember('footer_text', $event)"
+                        placeholder="Dharstec Solutions, 12 Race Course Road, Coimbatore 641018, India"></textarea>
+              <p class="hint">Shown above the unsubscribe link. Anti-spam laws ask for a real address, and it builds trust.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Attachments</h2>
+              <p class="text-xs text-slate-500 mt-0.5">PDF, PowerPoint, Word, Excel, images — sent with every email.</p>
+            </div>
+            <label class="btn-ghost btn-sm cursor-pointer shrink-0" [class.opacity-50]="!canEditContent" [class.pointer-events-none]="!canEditContent">
+              <input type="file" multiple class="hidden" [disabled]="!canEditContent"
+                     (change)="$event.stopPropagation(); onAttachments($event)"/>
+              + Add files
+            </label>
+          </div>
+          <div class="card-body space-y-3">
+            <div *ngIf="!attachments.length && !attachmentsUploading"
+                 class="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+              No attachments. Add a company profile or a short deck — the email points readers to it.
+            </div>
+            <div *ngFor="let a of attachments" class="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
+              <span class="w-10 h-10 rounded-lg text-white text-[10px] font-bold flex items-center justify-center shrink-0"
+                    [ngClass]="fileBadge(a.filename).color">{{ fileBadge(a.filename).text }}</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-slate-900 truncate">{{ a.filename }}</p>
+                <p class="text-xs text-slate-500">{{ formatBytes(a.size_bytes) }}</p>
+              </div>
+              <button *ngIf="canEditContent" type="button" class="btn-ghost btn-sm" (click)="removeAttachment(a)">Remove</button>
+            </div>
+            <p *ngIf="attachmentsUploading" class="text-sm text-slate-500 flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-full border-2 border-brand-500 border-t-transparent animate-spin"></span>
+              Uploading {{ attachmentsUploading }} file(s)...
+            </p>
+            <div *ngIf="attachments.length">
+              <div class="flex justify-between text-xs text-slate-500 mb-1">
+                <span>{{ formatBytes(attachmentBytes) }} of 15 MB</span><span>{{ attachmentPercent }}%</span>
+              </div>
+              <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full rounded-full" [ngClass]="attachmentBytes > 5242880 ? 'bg-amber-500' : 'bg-brand-500'"
+                     [style.width.%]="attachmentPercent"></div>
+              </div>
+              <p *ngIf="attachmentBytes > 5242880" class="hint !text-amber-700">
+                Over 5 MB, sending is slower and some company mail servers hold large attachments back. A download link is lighter.
+              </p>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Live preview -->
+      <div class="space-y-3 min-w-0 xl:sticky xl:top-20">
+        <div class="card overflow-hidden">
+          <div class="card-head flex-wrap">
+            <div class="flex items-center gap-2">
+              <h2 class="font-semibold text-slate-900">Live preview</h2>
+              <span *ngIf="previewLoading" class="w-3.5 h-3.5 rounded-full border-2 border-brand-500 border-t-transparent animate-spin"></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select *ngIf="previewChoices.length" class="input !w-52 py-1.5 text-xs"
+                      [ngModel]="previewRecipientId" (ngModelChange)="previewAs($event)">
+                <option *ngFor="let r of previewChoices" [ngValue]="r.id">As {{ r.email }}</option>
+              </select>
+              <div class="inline-flex rounded-lg border border-slate-300 p-0.5">
+                <button type="button" class="px-2.5 py-1 text-xs font-medium rounded-md transition"
+                        [ngClass]="previewDevice === 'desktop' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'"
+                        (click)="previewDevice = 'desktop'">Desktop</button>
+                <button type="button" class="px-2.5 py-1 text-xs font-medium rounded-md transition"
+                        [ngClass]="previewDevice === 'mobile' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'"
+                        (click)="previewDevice = 'mobile'">Phone</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 text-sm space-y-0.5">
+            <div class="flex gap-2 min-w-0">
+              <span class="w-16 shrink-0 text-slate-400">From</span>
+              <span class="truncate font-medium text-slate-900">{{ inbox.from }}
+                <span *ngIf="preview?.from_email" class="font-normal text-slate-400">&lt;{{ preview?.from_email }}&gt;</span></span>
+            </div>
+            <div class="flex gap-2 min-w-0">
+              <span class="w-16 shrink-0 text-slate-400">Subject</span>
+              <span class="truncate font-semibold text-slate-900">{{ inbox.subject }}</span>
+            </div>
+            <div class="flex gap-2 min-w-0">
+              <span class="w-16 shrink-0 text-slate-400">To</span>
+              <span class="truncate text-slate-600">{{ preview?.to }}
+                <span *ngIf="preview?.sample" class="text-xs text-amber-600">— a sample person until you upload a list</span></span>
+            </div>
+          </div>
+
+          <div class="bg-slate-100 p-3 sm:p-5">
+            <div class="mx-auto transition-all" [ngClass]="previewDevice === 'mobile'
+              ? 'max-w-[390px] rounded-[2.2rem] border-[10px] border-slate-900 overflow-hidden shadow-xl'
+              : ''">
+              <iframe *ngIf="previewHtml" [srcdoc]="previewHtml" title="Email preview"
+                      sandbox="allow-popups allow-popups-to-escape-sandbox"
+                      class="block w-full h-[46rem] bg-white"
+                      [ngClass]="previewDevice === 'mobile' ? '' : 'rounded-lg border border-slate-200 shadow-sm'"></iframe>
+              <div *ngIf="!previewHtml" class="h-[46rem] rounded-lg bg-white border border-slate-200 flex items-center justify-center text-sm text-slate-400">
+                Preparing the preview...
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="px-1 text-xs text-slate-500">
+          This is the real email for the person selected — the same HTML that gets sent. Send yourself a test in step 4
+          to see it in Gmail or Outlook.
+        </p>
+      </div>
+    </div>
+
+    <!-- ======================================================== SEND ==== -->
+    <div *ngIf="tab === 'send'" class="grid gap-5 lg:grid-cols-5 items-start">
+      <div class="lg:col-span-3 space-y-5 min-w-0">
+        <div *ngIf="campaign.status === 'scheduled'"
+             class="rounded-lg bg-sky-50 border border-sky-200 px-4 py-3 text-sm text-sky-900 flex flex-wrap items-center justify-between gap-3">
+          <span>Scheduled for <span class="font-semibold">{{ campaign.scheduled_at | date:'EEEE d MMM, h:mm a' }}</span>.</span>
+          <span class="flex gap-2">
+            <button type="button" class="btn-ghost btn-sm" [disabled]="acting" (click)="pause()">Unschedule</button>
+            <button type="button" class="btn-primary btn-sm" [disabled]="acting" (click)="resume()">Send now instead</button>
+          </span>
+        </div>
+        <div *ngIf="campaign.status === 'sending' || campaign.status === 'completed' || campaign.status === 'cancelled'"
+             class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-600">
+          This campaign has {{ campaign.status === 'sending' ? 'started' : 'finished' }}.
+          <button type="button" class="font-medium text-brand-600 underline" (click)="go('report')">Open the report</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 class="font-semibold text-slate-900">Ready to send?</h2></div>
+          <div class="divide-y divide-slate-100">
+            <button *ngFor="let c of checks" type="button" (click)="c.tab && go(c.tab)"
+                    class="w-full text-left px-5 py-3 flex items-start gap-3 hover:bg-slate-50 transition">
+              <span class="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                    [ngClass]="c.state === 'ok' ? 'bg-emerald-100 text-emerald-700' : c.state === 'warn' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'">
+                {{ c.state === 'ok' ? '✓' : c.state === 'warn' ? '!' : '×' }}
+              </span>
+              <span class="min-w-0">
+                <span class="block text-sm font-medium text-slate-900">{{ c.label }}</span>
+                <span class="block text-sm text-slate-500 break-words">{{ c.detail }}</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Send yourself a test</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Exactly what a recipient gets — design, personalisation and attachments.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="flex flex-wrap gap-2">
+              <input class="input flex-1 min-w-[14rem]" type="email" placeholder="you@company.com"
+                     [(ngModel)]="testEmail" (keyup.enter)="sendTest()"/>
+              <button type="button" class="btn-ghost" [disabled]="testing" (click)="sendTest()">
+                {{ testing ? 'Sending...' : 'Send test' }}
+              </button>
+            </div>
+            <p class="hint">
+              Personalised as {{ preview?.sample ? 'a sample person' : (preview?.to || 'the first person on the list') }}.
+              Open it on your phone too — most people will.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2 space-y-5 min-w-0">
+        <fieldset class="card min-w-0" [disabled]="!canEditContent" (input)="changed()" (change)="changed()">
+          <div class="card-head">
+            <div>
+              <h2 class="font-semibold text-slate-900">Delivery</h2>
+              <p class="text-xs text-slate-500 mt-0.5">A steady pace keeps the account out of spam.</p>
+            </div>
+          </div>
+          <div class="card-body space-y-4">
+            <div>
+              <label class="label">Speed</label>
+              <select class="input" [(ngModel)]="campaign.rate_per_minute">
+                <option *ngFor="let s of speeds" [ngValue]="s">{{ s }} emails a minute{{ s === 20 ? ' (recommended)' : '' }}</option>
+              </select>
+              <p class="hint">Every email goes out on its own, one after another — never as a Bcc blast.</p>
+            </div>
+            <div>
+              <label class="label">Daily limit</label>
+              <input class="input" type="number" min="0" [(ngModel)]="campaign.daily_limit"/>
+              <div class="flex flex-wrap gap-1.5 mt-2">
+                <button *ngFor="let p of dailyPresets" type="button" class="btn-ghost btn-sm"
+                        [class.!border-brand-500]="dailyIs(p.value)" [class.!text-brand-700]="dailyIs(p.value)"
+                        (click)="campaign.daily_limit = p.value; changed()">{{ p.label }}</button>
+              </div>
+              <p class="hint">
+                0 means no limit. When the limit is reached, sending pauses and carries on by itself 24 hours later.
+                Gmail allows about 500 a day, Google Workspace about 2,000.
+              </p>
+            </div>
+            <label class="flex items-start gap-2.5 text-sm text-slate-700">
+              <input type="checkbox" class="mt-0.5 rounded border-slate-300" [(ngModel)]="campaign.track_opens"/>
+              <span>
+                <span class="font-medium">Track opens</span>
+                <span class="block text-xs text-slate-500 mt-0.5">
+                  Adds an invisible 1-pixel image. Approximate: Apple Mail loads images for privacy, and some inboxes block them.
+                </span>
+              </span>
+            </label>
+            <p *ngIf="estimate" class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-600">
+              {{ stats.pending | number }} email(s) will take {{ estimate }}.
+            </p>
+          </div>
+        </fieldset>
+
+        <div *ngIf="campaign.status === 'draft' || campaign.status === 'paused'" class="card">
+          <div class="card-head"><h2 class="font-semibold text-slate-900">{{ campaign.status === 'paused' ? 'Resume' : 'When' }}</h2></div>
+          <div class="card-body space-y-3">
+            <ng-container *ngIf="campaign.status === 'draft'">
+              <label class="flex items-center gap-2.5 text-sm text-slate-700">
+                <input type="radio" name="when" value="now" [(ngModel)]="when"/> Send now
+              </label>
+              <label class="flex items-center gap-2.5 text-sm text-slate-700">
+                <input type="radio" name="when" value="later" [(ngModel)]="when"/> Schedule for later
+              </label>
+              <div *ngIf="when === 'later'">
+                <input class="input" type="datetime-local" [min]="minSchedule" [(ngModel)]="scheduleAt"/>
+                <p class="hint">Your local time. Tuesday to Thursday mornings tend to get the most opens for business email.</p>
+              </div>
+            </ng-container>
+            <p *ngIf="campaign.status === 'paused' && campaign.status_reason"
+               class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900 whitespace-pre-line">{{ campaign.status_reason }}</p>
+            <button type="button" class="btn-primary w-full !py-3 !text-base" [disabled]="!canStart || acting"
+                    (click)="campaign.status === 'paused' ? resume() : askStart()">
+              {{ campaign.status === 'paused' ? 'Resume sending' : (when === 'later' ? 'Schedule campaign' : 'Start sending') }}
+            </button>
+            <p *ngIf="!canStart" class="hint text-center">Fix the items marked &times; first.</p>
+          </div>
+        </div>
+
+        <div class="card card-body space-y-2">
+          <p class="text-sm font-semibold text-slate-900">Getting into the inbox</p>
+          <ul class="list-disc pl-5 space-y-1 text-[13px] text-slate-600">
+            <li>Send from the customer's own domain, with SPF, DKIM and DMARC set up at the domain host.</li>
+            <li>A new mailbox? Start with 30–50 a day and grow it over two weeks.</li>
+            <li>Personalise the subject and greeting; avoid ALL CAPS and "FREE!!!".</li>
+            <li>The Personal design reaches Gmail's Primary tab most often.</li>
+            <li>Email people who would expect to hear from you — complaints hurt more than anything else.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================== REPORT ==== -->
+    <div *ngIf="tab === 'report'" class="space-y-5">
+      <div class="card card-body flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3 min-w-0" [ngSwitch]="campaign.status">
+          <ng-container *ngSwitchCase="'sending'">
+            <span class="relative flex w-3 h-3 shrink-0">
+              <span class="absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75 animate-ping"></span>
+              <span class="relative inline-flex rounded-full w-3 h-3 bg-brand-600"></span>
+            </span>
+            <div class="min-w-0">
+              <p class="font-semibold text-slate-900">Sending</p>
+              <p class="text-sm text-slate-500">
+                {{ stats.sent | number }} of {{ stats.total | number }} sent &middot; {{ campaign.rate_per_minute }} a minute
+                <ng-container *ngIf="estimate">&middot; {{ estimate }} to go</ng-container>
+              </p>
+            </div>
+          </ng-container>
+          <ng-container *ngSwitchCase="'scheduled'">
+            <span class="w-3 h-3 rounded-full bg-sky-500 shrink-0"></span>
+            <div>
+              <p class="font-semibold text-slate-900">Scheduled</p>
+              <p class="text-sm text-slate-500">Starts {{ campaign.scheduled_at | date:'EEEE d MMM, h:mm a' }}</p>
+            </div>
+          </ng-container>
+          <ng-container *ngSwitchCase="'paused'">
+            <span class="w-3 h-3 rounded-full bg-amber-500 shrink-0"></span>
+            <div>
+              <p class="font-semibold text-slate-900">Paused</p>
+              <p class="text-sm text-slate-500">{{ stats.pending | number }} waiting to be sent</p>
+            </div>
+          </ng-container>
+          <ng-container *ngSwitchCase="'completed'">
+            <span class="w-3 h-3 rounded-full bg-emerald-500 shrink-0"></span>
+            <div>
+              <p class="font-semibold text-slate-900">Finished</p>
+              <p class="text-sm text-slate-500">{{ campaign.completed_at | date:'d MMM yyyy, h:mm a' }}</p>
+            </div>
+          </ng-container>
+          <ng-container *ngSwitchCase="'cancelled'">
+            <span class="w-3 h-3 rounded-full bg-slate-400 shrink-0"></span>
+            <div>
+              <p class="font-semibold text-slate-900">Cancelled</p>
+              <p class="text-sm text-slate-500">{{ stats.pending | number }} were never sent</p>
+            </div>
+          </ng-container>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button *ngIf="campaign.status === 'sending'" type="button" class="btn-ghost" [disabled]="acting" (click)="pause()">Pause</button>
+          <button *ngIf="campaign.status === 'paused'" type="button" class="btn-primary" [disabled]="acting || !canStart" (click)="resume()">Resume</button>
+          <button *ngIf="campaign.status === 'scheduled'" type="button" class="btn-primary" [disabled]="acting" (click)="resume()">Send now</button>
+          <button *ngIf="campaign.status === 'scheduled'" type="button" class="btn-ghost" [disabled]="acting" (click)="pause()">Unschedule</button>
+          <button *ngIf="stats.failed && (campaign.status === 'completed' || campaign.status === 'paused')" type="button"
+                  class="btn-ghost" [disabled]="acting" (click)="retryFailed()">Retry {{ stats.failed }} failed</button>
+          <button *ngIf="campaign.status === 'sending' || campaign.status === 'paused' || campaign.status === 'scheduled'"
+                  type="button" class="btn-ghost !text-red-600" [disabled]="acting" (click)="confirmCancelOpen = true">Cancel</button>
+          <button type="button" class="btn-ghost" (click)="exportResults()">Export results</button>
+          <button type="button" class="btn-ghost" (click)="duplicate()" title="Same message and attachments, new list">Duplicate</button>
+          <button type="button" class="btn-ghost !text-red-600" [disabled]="campaign.status === 'sending'"
+                  [title]="campaign.status === 'sending' ? 'Pause it first' : 'Delete'" (click)="confirmDeleteOpen = true">Delete</button>
+        </div>
+      </div>
+
+      <div *ngIf="campaign.status_reason" class="rounded-lg px-4 py-3 text-sm whitespace-pre-line border"
+           [ngClass]="campaign.status === 'paused' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-sky-50 border-sky-200 text-sky-900'">{{ campaign.status_reason }}<ng-container *ngIf="campaign.status === 'sending' && campaign.next_send_at"> Next attempt {{ campaign.next_send_at | date:'d MMM, h:mm a' }}.</ng-container></div>
+
+      <div class="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Recipients</p>
+          <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.total | number }}</p>
+        </div>
+        <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Sent</p>
+          <p class="text-3xl font-bold text-emerald-600 mt-2">{{ stats.sent | number }}</p>
+        </div>
+        <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Opened</p>
+          <p class="text-3xl font-bold text-brand-600 mt-2">{{ openRate }}%</p>
+          <p class="text-xs text-slate-500 mt-1">{{ stats.opened | number }} {{ stats.opened === 1 ? 'person' : 'people' }}</p>
+        </div>
+        <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Waiting</p>
+          <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.pending + stats.sending | number }}</p>
+        </div>
+        <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Failed</p>
+          <p class="text-3xl font-bold mt-2" [ngClass]="stats.failed ? 'text-red-600' : 'text-slate-900'">{{ stats.failed | number }}</p>
+        </div>
+        <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Unsubscribed</p>
+          <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.unsubscribed | number }}</p>
+        </div>
+      </div>
+
+      <div class="card card-body">
+        <div class="flex items-baseline justify-between text-sm mb-2">
+          <span class="font-medium text-slate-900">{{ stats.sent + stats.failed + stats.skipped | number }} of {{ stats.total | number }} done</span>
+          <span class="text-slate-500">{{ share(stats.sent + stats.failed + stats.skipped) | number:'1.0-0' }}%</span>
+        </div>
+        <div class="h-3 rounded-full bg-slate-100 overflow-hidden flex">
+          <div class="h-full bg-emerald-500 transition-all" [style.width.%]="share(stats.sent)"></div>
+          <div class="h-full bg-red-500 transition-all" [style.width.%]="share(stats.failed)"></div>
+          <div class="h-full bg-slate-400 transition-all" [style.width.%]="share(stats.skipped)"></div>
+          <div class="h-full bg-brand-400 animate-pulse" [style.width.%]="share(stats.sending)"></div>
+        </div>
+        <div class="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Sent</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>Failed</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>Skipped (unsubscribed)</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-200"></span>Waiting</span>
+        </div>
+      </div>
+
+      <ng-container *ngTemplateOutlet="recipientTable"></ng-container>
+
+      <p class="text-xs text-slate-500">
+        Opens are approximate: Apple Mail loads images for privacy, which can count an open nobody made, and inboxes
+        that block images never report one. Replies and clicks on your button are the stronger signal.
+      </p>
+    </div>
+  </ng-container>
+</div>
+
+<!-- Merge-field chips: they land wherever the cursor was last. -->
+<ng-template #mergeChips>
+  <div>
+    <p class="text-xs font-medium text-slate-500 mb-1.5">
+      Insert a merge field <span class="font-normal">— filled in for each recipient</span>
+    </p>
+    <div class="flex flex-wrap gap-1.5">
+      <button *ngFor="let f of mergeFields" type="button" class="btn-ghost btn-sm font-mono !px-2 !py-1 !text-[11px]"
+              (mousedown)="$event.preventDefault()" (click)="insert(f)">{{ token(f) }}</button>
+    </div>
+    <p class="hint">Give it a fallback for empty values: <code class="font-mono">{{ fallbackExample }}</code></p>
+  </div>
+</ng-template>
+
+<ng-template #recipientTable>
+  <div class="card overflow-hidden">
+    <div class="card-head flex-wrap">
+      <h3 class="font-semibold text-slate-900">
+        Recipients <span class="font-normal text-slate-400">({{ recipientPage.total | number }})</span>
+      </h3>
+      <div class="flex flex-wrap gap-2">
+        <select class="input !w-40 py-1.5" [(ngModel)]="recipientFilter.status" (change)="loadRecipients(false, 1)">
+          <option value="">Everyone</option>
+          <option value="pending">Waiting</option>
+          <option value="sent">Sent</option>
+          <option value="opened">Opened</option>
+          <option value="failed">Failed</option>
+          <option value="skipped">Skipped</option>
+          <option value="unsubscribed">Unsubscribed</option>
+        </select>
+        <input class="input !w-60 py-1.5" placeholder="Search email, name, company..."
+               [(ngModel)]="recipientFilter.search" (keyup.enter)="loadRecipients(false, 1)"/>
+      </div>
+    </div>
+
+    <div *ngIf="recipientsLoading" class="p-6 text-sm text-slate-500">Loading...</div>
+    <div *ngIf="!recipientsLoading && !recipients.length" class="p-8 text-center text-sm text-slate-500">Nobody matches.</div>
+
+    <div *ngIf="!recipientsLoading && recipients.length" class="overflow-x-auto">
+      <table class="w-full min-w-[52rem]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th">Email</th>
+            <th class="th">Name</th>
+            <th class="th">Company</th>
+            <th class="th">Status</th>
+            <th class="th">Sent</th>
+            <th class="th">Opened</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr *ngFor="let r of recipients" class="hover:bg-slate-50">
+            <td class="td font-medium text-slate-900 break-all">{{ r.email }}</td>
+            <td class="td">{{ recipientName(r) || '—' }}</td>
+            <td class="td">{{ r.data['company'] || '—' }}</td>
+            <td class="td">
+              <span [ngClass]="recipientStatusClass(r.status)">{{ recipientStatusLabel[r.status] }}</span>
+              <span *ngIf="r.unsubscribed_at" class="badge-warn ml-1">unsubscribed</span>
+              <p *ngIf="r.error" class="text-xs text-red-600 mt-1 max-w-xs line-clamp-2" [title]="r.error">{{ r.error }}</p>
+            </td>
+            <td class="td whitespace-nowrap text-slate-500">{{ r.sent_at ? (r.sent_at | date:'d MMM, h:mm a') : '—' }}</td>
+            <td class="td whitespace-nowrap">
+              {{ r.opened_at ? (r.opened_at | date:'d MMM, h:mm a') : '—' }}
+              <span *ngIf="r.open_count > 1" class="text-xs text-slate-400">&times;{{ r.open_count }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div *ngIf="recipientPage.pages > 1" class="px-5 py-3 border-t border-slate-200 flex items-center justify-between gap-3">
+      <p class="text-sm text-slate-500">Page {{ recipientPage.page }} of {{ recipientPage.pages }}</p>
+      <div class="flex gap-1">
+        <button type="button" class="btn-ghost btn-sm" [disabled]="recipientPage.page === 1"
+                (click)="loadRecipients(false, recipientPage.page - 1)">Prev</button>
+        <button type="button" *ngFor="let p of recipientPages" class="btn-ghost btn-sm"
+                [class.!bg-brand-600]="p === recipientPage.page" [class.!text-white]="p === recipientPage.page"
+                (click)="loadRecipients(false, p)">{{ p }}</button>
+        <button type="button" class="btn-ghost btn-sm" [disabled]="recipientPage.page === recipientPage.pages"
+                (click)="loadRecipients(false, recipientPage.page + 1)">Next</button>
+      </div>
+    </div>
+  </div>
+</ng-template>
+
+<!-- Start / schedule confirmation -->
+<div *ngIf="confirmStartOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50" (click)="confirmStartOpen = false">
+  <div class="card w-full max-w-md" (click)="$event.stopPropagation()">
+    <div class="card-body">
+      <div class="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+      </div>
+      <h3 class="mt-4 text-lg font-semibold text-slate-900">{{ when === 'later' ? 'Schedule this campaign?' : 'Start sending now?' }}</h3>
+      <p class="mt-2 text-sm text-slate-600">
+        <span class="font-semibold">{{ stats.pending | number }}</span> people will receive
+        "<span class="font-semibold">{{ campaign.subject }}</span>" from <span class="font-semibold">{{ inbox.from }}</span><ng-container
+          *ngIf="when === 'later'"> on <span class="font-semibold">{{ scheduleAt | date:'EEEE d MMM, h:mm a' }}</span></ng-container>.
+      </p>
+      <p class="mt-2 text-sm text-slate-500">
+        At {{ campaign.rate_per_minute }} a minute this takes {{ estimate }}. You can pause at any time.
+      </p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button type="button" class="btn-ghost" (click)="confirmStartOpen = false">Not yet</button>
+        <button type="button" class="btn-primary" [disabled]="acting" (click)="start()">
+          {{ acting ? 'Starting...' : (when === 'later' ? 'Schedule' : 'Send now') }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<app-confirm [open]="confirmCancelOpen" title="Cancel this campaign?" confirmLabel="Cancel campaign"
+             [message]="'Nothing more will be sent. ' + (stats.pending + stats.sending) + ' waiting email(s) will never go out.\n\nTo stop only for a while, use Pause instead.'"
+             (confirmed)="cancelCampaign()" (cancelled)="confirmCancelOpen = false"></app-confirm>
+
+<app-confirm [open]="confirmDeleteOpen" title="Delete this campaign?"
+             message="The message, the recipient list and the report will be deleted. People who unsubscribed stay on the do-not-email list.&#10;&#10;This cannot be undone."
+             (confirmed)="remove()" (cancelled)="confirmDeleteOpen = false"></app-confirm>
+
+<app-confirm [open]="confirmClearOpen" title="Clear the recipient list?" confirmLabel="Clear list"
+             message="Every recipient is removed from this campaign. You can upload a new list straight after."
+             (confirmed)="clearList()" (cancelled)="confirmClearOpen = false"></app-confirm>

@@ -27,6 +27,10 @@ const routes: Routes = [
       { path: 'forms/:id', component: FormBuilderComponent },
       { path: 'submissions', component: SubmissionListComponent },
       { path: 'submissions/:id', component: SubmissionDetailComponent },
+      {
+        path: 'campaigns',
+        loadChildren: () => import('./pages/campaigns/campaigns.module').then((m) => m.CampaignsModule)
+      },
       { path: 'change-password', component: ChangePasswordComponent }
     ]
   },

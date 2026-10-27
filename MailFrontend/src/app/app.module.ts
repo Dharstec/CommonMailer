@@ -9,7 +9,7 @@ import { AuthInterceptor } from './core/interceptors/auth.interceptor';
 
 import { ShellComponent } from './layout/shell.component';
 import { ToastComponent } from './shared/toast.component';
-import { ConfirmComponent } from './shared/confirm.component';
+import { SharedModule } from './shared/shared.module';
 
 import { LoginComponent } from './pages/login/login.component';
 import { DashboardComponent } from './pages/dashboard/dashboard.component';
@@ -26,7 +26,6 @@ import { ChangePasswordComponent } from './pages/change-password.component';
     AppComponent,
     ShellComponent,
     ToastComponent,
-    ConfirmComponent,
     LoginComponent,
     DashboardComponent,
     TenantListComponent,
@@ -42,7 +41,8 @@ import { ChangePasswordComponent } from './pages/change-password.component';
     HttpClientModule,
     FormsModule,
     ReactiveFormsModule,
-    AppRoutingModule
+    AppRoutingModule,
+    SharedModule
   ],
   providers: [
     { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true }

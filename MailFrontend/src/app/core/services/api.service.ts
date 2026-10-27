@@ -54,4 +54,15 @@ export class ApiService {
   download(path: string, query?: Record<string, any>): Observable<Blob> {
     return this.http.get(this.url(path), { params: this.toParams(query), responseType: 'blob' });
   }
+
+  /**
+   * Sends a file as the raw request body. The backend reads the name and type
+   * from the query string, so there is no multipart encoding to get wrong.
+   */
+  upload<T>(path: string, file: Blob, query?: Record<string, any>): Observable<ApiResponse<T>> {
+    return this.http.post<ApiResponse<T>>(this.url(path), file, {
+      params: this.toParams(query),
+      headers: { 'Content-Type': 'application/octet-stream' }
+    });
+  }
 }
