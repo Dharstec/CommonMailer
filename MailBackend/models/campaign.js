@@ -16,7 +16,9 @@ const crypto = require('crypto');
 const POSTGRESQLService = require('../helpers/POSTGRES');
 const mailer = require('../helpers/mailer');
 const { parseRecipients, isEmail, cleanEmail } = require('../helpers/campaignCsv');
-const { renderCampaign, formatBytes } = require('../helpers/campaignRender');
+const {
+    renderCampaign, formatBytes, mailAttachments, inlinePreviewImages, missingInlineImages
+} = require('../helpers/campaignRender');
 const { baseUrl } = require('../helpers/links');
 const { explainSmtpError } = require('../helpers/smtpErrors');
 const logger = require('../helpers/logger');
@@ -527,7 +529,7 @@ const exportRecipients = async (req, res) => {
         const slug = row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'campaign';
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${slug}-results.csv"`);
-        res.send('﻿' + lines.join('\n'));
+        res.send('\uFEFF' + lines.join('\n'));
     } catch (error) {
         handleServerError(res, error, 'campaign.exportRecipients');
     }
@@ -673,6 +675,16 @@ const preview = async (req, res) => {
             unsubscribeUrl: previewUnsubscribeUrl()
         });
 
+        // Only the images the HTML actually shows are read, not every attachment.
+        if (message.html.includes('cid:')) {
+            const images = await POSTGRESQLService.PostgresAny(
+                `SELECT filename, content_type, content FROM campaign_attachments
+                  WHERE campaign_id = $1 AND position(('cid:' || filename) IN $2) > 0`,
+                [id, message.html]
+            );
+            message.html = inlinePreviewImages(message.html, images);
+        }
+
         res.json({
             status: 'success',
             data: {
@@ -726,11 +738,7 @@ const sendTest = async (req, res) => {
                 subject: `[TEST] ${message.subject}`,
                 html: message.html,
                 text: message.text,
-                attachments: files.map((f) => ({
-                    filename: f.filename,
-                    content: f.content,
-                    contentType: f.content_type || undefined
-                })),
+                attachments: mailAttachments(files, message.html),
                 headers: {
                     'List-Unsubscribe': `<${unsubscribeUrl}>`,
                     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
@@ -777,6 +785,15 @@ const start = async (req, res) => {
             ? String(row.custom_html || '').trim()
             : String(content.body || '').trim() || String(content.headline || '').trim();
         if (!hasMessage) problems.push('Write the message.');
+        if (row.design === 'custom') {
+            // An image the HTML shows but nobody uploaded would arrive broken in every inbox.
+            const uploaded = (await listAttachments(id)).map((a) => a.filename);
+            const missing = missingInlineImages(row.custom_html, uploaded);
+            if (missing.length) {
+                problems.push(`The HTML shows ${missing.map((m) => `cid:${m}`).join(', ')}, but no attachment has `
+                    + 'that name. Upload the image in step 3, named exactly the same.');
+            }
+        }
         if (!stats.pending) {
             problems.push(stats.failed
                 ? 'Nothing is waiting to be sent. Use "Retry failed" to try the failed messages again.'

@@ -4,6 +4,7 @@ One mail service for all your static-site customers.
 
 **Admin panel** = you define which fields each form accepts.
 **One API** = the customer's website POSTs the data, you get an email.
+**Campaigns** = one designed email, sent to a whole list from a customer's own mailbox.
 
 No backend code and no new deploy when a customer is added.
 
@@ -260,6 +261,20 @@ GET    /api/forms/:formId/templates    PUT  /api/forms/:formId/templates
 POST   /api/forms/:formId/templates/preview | /send-test
 GET    /api/submissions | /stats | /export | /:id
 POST   /api/submissions/:id/resend     DELETE /api/submissions/:id
+GET    /api/campaigns                  POST /api/campaigns
+GET    /api/campaigns/:id              PUT  /api/campaigns/:id    DELETE /api/campaigns/:id
+POST   /api/campaigns/:id/duplicate | /preview | /test | /start | /pause | /cancel | /retry-failed
+GET    /api/campaigns/:id/recipients | /recipients/export
+POST   /api/campaigns/:id/recipients   (raw CSV body)     DELETE /api/campaigns/:id/recipients
+POST   /api/campaigns/:id/attachments  (raw file body)    DELETE /api/campaigns/:id/attachments/:attachmentId
+GET    /api/campaigns/unsubscribes?tenant_id=   POST /api/campaigns/unsubscribes
+DELETE /api/campaigns/unsubscribes/:id
+```
+
+Opened from inside a recipient's mail client, no login (the random token is the key):
+
+```
+GET|POST /api/c/:token/unsubscribe     GET /api/c/:token/open.gif
 ```
 
 ---
@@ -363,6 +378,116 @@ remove fields later, whereas a hand-written row per field goes stale.
 
 ---
 
+## Campaigns
+
+One designed email, sent to a whole list from a customer's own mailbox — one
+recipient at a time, personalised, with attachments.
+
+**Campaigns → New campaign**, then four steps:
+
+1. **Details** — the customer to send from (any customer with SMTP set up), the
+   From name, the subject and the preview text. An inbox mock-up shows what a
+   recipient sees before opening.
+2. **Recipients** — upload a CSV (format below) or paste addresses.
+3. **Design & content** — pick a design, write the message, attach files. The
+   live preview is the real email for a real row of the list.
+4. **Review & send** — a checklist, a test email to yourself, speed and daily
+   limit, then send now or schedule.
+
+The **Report** then shows sent, opened, failed and unsubscribed — per person, live.
+
+### The CSV
+
+```csv
+email,first_name,last_name,company,city
+priya@acmetextiles.in,Priya,Raman,Acme Textiles,Coimbatore
+rajesh@globexsteel.com,Rajesh,Kumar,Globex Steel,Chennai
+```
+
+| Column | |
+|---|---|
+| `email` | **Required.** `E-mail`, `Email ID` and `Email Address` also work. |
+| `first_name` | For "Hi Priya". Taken from `name` when missing — "Dr. Priya Raman" gives Priya. |
+| `company` | Optional. `Company Name` and `Organisation` also work. |
+| anything else | Becomes a merge field: a `city` column gives `{{city}}`. |
+
+- From Excel: **File → Save As → CSV UTF-8**. Semicolon- and tab-separated files,
+  Excel's "Unicode Text", and a bare list of addresses with no header all work.
+- Up to 20,000 rows and 5 MB. Invalid addresses, misspelt domains (`gmial.com`)
+  and duplicates are skipped and listed with their row numbers.
+- Anyone who unsubscribed from that customer before is left out automatically.
+
+### Merge fields
+
+`{{first_name}}`, `{{company}}` or any column of the CSV. Give one a fallback for
+rows where it is empty: `Hi {{first_name|there}},` becomes "Hi Priya," or
+"Hi there,". They work in the subject, preview text, headline, message, button,
+signature and footer.
+
+### Designs
+
+| Design | Best for |
+|---|---|
+| Executive | Proposals and company profiles — a calm white card |
+| Spotlight | Launches and announcements — brand header, big button |
+| Aurora | Offers and events — vivid gradient hero |
+| Personal | First contact — looks typed by a person; the likeliest to reach Gmail's Primary tab |
+| Custom HTML | Your own HTML; merge fields still work |
+
+Every design is table-based with inline styles (Gmail, Outlook, Apple Mail,
+phones), adapts its text colours to the brand colour, names the attachments in
+the body, and is sent with a plain-text part. The message box understands
+`**bold**`, `- lists`, `1. lists`, `## headings`, `[links](https://…)` and `---`.
+
+### Attachments
+
+PDF, PowerPoint, Word, Excel, images — up to 10 files and 15 MB per email.
+Executables (`.exe`, `.js`, `.bat`, …) are refused at upload: Gmail and Outlook
+bounce any email that carries one.
+
+In a Custom HTML design, an attached image can appear inside the email instead:
+write `<img src="cid:logo.png">` with the file's exact name. The image travels
+inside the message (inline, `multipart/related`), so it needs no website to host
+it and shows without the reader having to allow images. The preview shows it,
+and starting the campaign is refused while the HTML uses an image nobody uploaded.
+
+### How sending works
+
+- **One email per recipient, never Bcc.** Each is personalised, carries its own
+  unsubscribe link, and a bad address fails only itself.
+- **A background sender** inside the API process works through the queue at the
+  campaign's speed (20 a minute by default), with an optional daily limit that
+  waits and then continues by itself. Its state lives in the database, so a
+  restart or deploy resumes exactly where it stopped.
+- **Unsubscribe** is in every email twice: a visible link, and the
+  `List-Unsubscribe` one-click header that Gmail and Yahoo require for bulk mail.
+  It applies per customer, to all of its future campaigns. Someone who replied
+  "please remove me" goes in **Campaigns → Do-not-email list**.
+- **Failures are handled by kind:**
+  - a bad address — that row fails, sending carries on
+  - "try again later" or an unreachable server — retried automatically after 1, 2, 5, 10, then 15 minutes
+  - wrong password, daily quota reached, message too large — the campaign **pauses**
+    and says why; fix it and press Resume
+  - ten failures in a row — pauses, to protect the account's reputation
+- **Opens** are counted with a 1-pixel image (it can be switched off per
+  campaign). They are approximate: Apple Mail loads images for privacy, and some
+  inboxes block them.
+
+### Getting into the inbox
+
+1. Set up SPF, DKIM and DMARC on the customer's domain — the biggest single factor.
+2. Warm up a new mailbox: 30–50 a day for the first week, then grow.
+3. Gmail allows about 500 recipients a day, Google Workspace about 2,000 — set the daily limit.
+4. Personalise the subject, always write preview text, and skip ALL CAPS and "FREE!!!".
+5. For first contact use the Personal design, and keep attachments small (a PDF
+   under ~2 MB) or send a link.
+6. Only email people who would expect to hear from you.
+
+> The sender runs inside the API process. Keep pm2 at a single instance, as
+> `ecosystem.config.js` does — two processes would each send at full speed.
+
+---
+
 ## Troubleshooting
 
 **`403` "This form is not enabled for this website."** — the site's origin is not
@@ -382,3 +507,11 @@ whose SPF record authorises this SMTP server.
 
 **Status `failed` in the panel** — SMTP broke, the enquiry is safe. Fix the
 credentials, then **Resend** from the submission page.
+
+**Campaign paused: "reached its sending limit"** — the mailbox's daily quota is
+used up. Resume it the next day, and set a daily limit on the campaign so it
+spreads itself out.
+
+**A PDF attaches but a bigger file (a PowerPoint deck) does not** — nginx on the
+server still has its old 2 MB limit. The panel says the server refused the
+upload. See *Upgrading to Campaigns* in DEPLOY.md.

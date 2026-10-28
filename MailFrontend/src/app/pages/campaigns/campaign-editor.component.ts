@@ -661,7 +661,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
       'anitha@initech.co.in,Anitha,,Initech Solutions,Bengaluru'
     ];
     // The byte-order mark makes Excel open it as UTF-8, so names in any script survive.
-    this.saveBlob(new Blob(['﻿' + rows.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }), 'recipients-sample.csv');
+    this.saveBlob(new Blob(['\uFEFF' + rows.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }), 'recipients-sample.csv');
   }
 
   exportResults(): void {

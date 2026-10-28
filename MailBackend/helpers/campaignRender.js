@@ -251,28 +251,38 @@ function stripFormatting(text) {
 }
 
 const NAMED_ENTITIES = {
-    nbsp: ' ', lt: '<', gt: '>', quot: '"', apos: "'", rsquo: '’', lsquo: '‘',
-    rdquo: '”', ldquo: '“', mdash: '—', ndash: '–', hellip: '…',
-    copy: '©', reg: '®', trade: '™', rarr: '→', zwnj: '', shy: ''
+    nbsp: ' ', ensp: ' ', emsp: ' ', thinsp: ' ', lt: '<', gt: '>', quot: '"', apos: "'",
+    rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', laquo: '«', raquo: '»',
+    mdash: '—', ndash: '–', hellip: '…', middot: '·', bull: '•',
+    times: '×', divide: '÷', plusmn: '±', deg: '°', euro: '€', pound: '£',
+    copy: '©', reg: '®', trade: '™', rarr: '→', larr: '←', zwnj: '', shy: ''
 };
 
-/** Good-enough text part for a hand-written HTML campaign. */
+/**
+ * Good-enough text part for a hand-written HTML campaign. Source whitespace is
+ * collapsed first, as a browser would, so only real block ends become breaks.
+ */
 function htmlToText(html) {
     return String(html || '')
         .replace(/<(head|style|script|title)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
         .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\s+/g, ' ')
         .replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href, label) => {
             const text = label.replace(/<[^>]+>/g, '').trim();
-            return text && text !== href ? `${text} (${href})` : href;
+            // A mailto link with a prefilled subject and body reads as just the address.
+            const target = /^mailto:/i.test(href) ? href.slice(7).split('?')[0] : href;
+            return text && text !== target ? `${text} (${target})` : target;
         })
         .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/(p|div|h[1-6]|tr|li|table|blockquote)>/gi, '\n')
+        .replace(/<\/(p|h[1-6]|table|blockquote)>/gi, '\n\n')
+        .replace(/<\/(div|tr|li)>/gi, '\n')
         .replace(/<li[^>]*>/gi, '- ')
         .replace(/<[^>]+>/g, '')
         .replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(Number(n)))
         .replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCodePoint(parseInt(n, 16)))
         .replace(/&([a-z]+);/gi, (m, name) => (name.toLowerCase() in NAMED_ENTITIES ? NAMED_ENTITIES[name.toLowerCase()] : m))
         .replace(/&amp;/gi, '&')
+        .replace(/ {2,}/g, ' ')
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n[ \t]+/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
@@ -652,4 +662,49 @@ function renderCampaign({ campaign, data, attachments = [], company, unsubscribe
     return { subject, preheader, html, text };
 }
 
-module.exports = { renderCampaign, merge, formatBytes, DESIGN_KEYS, DEFAULT_BRAND };
+// ------------------------------------------------------- inline images --
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Matches `cid:<filename>` only as a whole name — "logo.png" must not match "logo.png2". */
+function cidPattern(filename, flags) {
+    return new RegExp(`cid:${escapeRegExp(filename)}(?=["'\\s)>;]|$)`, flags);
+}
+
+/**
+ * Nodemailer attachments for one message. A file the HTML shows with
+ * src="cid:<filename>" travels inside the message instead of as a download —
+ * how a custom design carries its own logo and screenshots without hosting
+ * them anywhere. Nodemailer puts such images in a multipart/related part,
+ * marked inline, which Gmail, Outlook and Apple Mail show in place.
+ */
+function mailAttachments(files, html) {
+    return files.map((f) => ({
+        filename: f.filename,
+        content: f.content,
+        contentType: f.content_type || undefined,
+        ...(cidPattern(f.filename).test(html) ? { cid: f.filename } : {})
+    }));
+}
+
+/**
+ * For the panel preview only: a browser cannot resolve cid: links, so each
+ * image the HTML uses is swapped for a data: URL of the uploaded file.
+ */
+function inlinePreviewImages(html, files) {
+    return files.reduce((out, f) => out.replace(
+        cidPattern(f.filename, 'g'),
+        `data:${f.content_type || 'image/png'};base64,${f.content.toString('base64')}`
+    ), html);
+}
+
+/** cid: names the HTML uses that no uploaded file answers to. */
+function missingInlineImages(html, filenames) {
+    const used = [...String(html || '').matchAll(/cid:([^"'\s)>;]+)/g)].map((m) => m[1]);
+    return [...new Set(used)].filter((name) => !filenames.includes(name));
+}
+
+module.exports = {
+    renderCampaign, merge, formatBytes, mailAttachments, inlinePreviewImages, missingInlineImages,
+    DESIGN_KEYS, DEFAULT_BRAND
+};

@@ -12,7 +12,7 @@
  */
 const POSTGRESQLService = require('./POSTGRES');
 const mailer = require('./mailer');
-const { renderCampaign } = require('./campaignRender');
+const { renderCampaign, mailAttachments } = require('./campaignRender');
 const { campaignLinks } = require('./links');
 const { explainSmtpError } = require('./smtpErrors');
 const logger = require('./logger');
@@ -249,11 +249,7 @@ async function sendNext(campaign) {
             subject: message.subject,
             html: message.html,
             text: message.text,
-            attachments: files.map((f) => ({
-                filename: f.filename,
-                content: f.content,
-                contentType: f.content_type || undefined
-            })),
+            attachments: mailAttachments(files, message.html),
             // One-click unsubscribe (RFC 8058). Gmail and Yahoo require it from
             // bulk senders, and show their own Unsubscribe button next to the
             // sender name — which is pressed instead of "Report spam".

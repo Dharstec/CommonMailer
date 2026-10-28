@@ -61,7 +61,7 @@ function decode(buffer) {
         return new TextDecoder('utf-16be').decode(buffer.subarray(2));
     }
     try {
-        return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^﻿/, '');
+        return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '');
     } catch (err) {
         // Not valid UTF-8: Excel's plain "CSV" on Windows writes Windows-1252.
         return new TextDecoder('windows-1252').decode(buffer);

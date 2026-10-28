@@ -36,7 +36,10 @@ export class AuthInterceptor implements HttpInterceptor {
             return throwError(() => error);
           }
         } else if (error.status === 0) {
-          this.toast.error('Cannot reach the server. Is the backend running?');
+          this.toast.error(this.isLargeUpload(req)
+            ? 'The server refused this upload before it reached the app — the file is bigger than the web '
+              + 'server accepts. Raise nginx\'s upload limit: see "Upgrading to Campaigns" in DEPLOY.md.'
+            : 'Cannot reach the server. Is the backend running?');
         } else if (error.status !== 400) {
           this.toast.error(message);
         }
@@ -44,5 +47,15 @@ export class AuthInterceptor implements HttpInterceptor {
         return throwError(() => error);
       })
     );
+  }
+
+  /**
+   * nginx refuses an oversized body with a 413 that carries no CORS headers,
+   * so the browser hides the response and reports status 0 — the same as a
+   * dead server. What was being sent is the only way to tell the two apart.
+   * 1 MB is nginx's own default limit, the smallest a proxy is likely to have.
+   */
+  private isLargeUpload(req: HttpRequest<any>): boolean {
+    return req.body instanceof Blob && req.body.size > 1024 * 1024;
   }
 }

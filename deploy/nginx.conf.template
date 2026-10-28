@@ -43,8 +43,11 @@ server {
         proxy_read_timeout    30s;
     }
 
-    # A contact form submission is small. Anything larger is not a form post.
-    client_max_body_size 2m;
+    # Sized for the largest legitimate request: a campaign attachment of up to
+    # 15 MB. Contact form posts stay tiny. The app enforces the real limit for
+    # each endpoint — 1 MB for JSON, 5 MB for a recipient list, 15 MB of
+    # attachments — so this value only has to let that largest one through.
+    client_max_body_size 20m;
 
     # Do not advertise the nginx version.
     server_tokens off;

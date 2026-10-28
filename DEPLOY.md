@@ -195,6 +195,35 @@ sudo tail -f /var/log/nginx/commonmailer.error.log
 
 ---
 
+## Upgrading to Campaigns
+
+Deploy as usual — the new tables are created on restart (`004_campaigns.sql`)
+and the campaign sender starts with the API.
+
+One manual step on a server set up **before** Campaigns existed: nginx still
+refuses any request over 2 MB, which blocks most attachments — a PowerPoint deck
+is nearly always bigger than that. `setup-ec2.sh` writes the nginx file only on
+first install, and certbot has edited it since, so raise the limit in place:
+
+```bash
+sudo sed -i 's/client_max_body_size 2m;/client_max_body_size 20m;/' /etc/nginx/conf.d/commonmailer.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Check it took effect. A 3 MB upload without a login must now reach the app and
+get `403`; `413` means nginx is still stopping it:
+
+```bash
+head -c 3145728 /dev/zero | curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+  -H "Content-Type: application/octet-stream" --data-binary @- \
+  https://mailer.dharstec.com/api/campaigns/1/attachments
+```
+
+The app still enforces the real limits after checking the login: 5 MB for a
+recipient list, 15 MB of attachments per email.
+
+---
+
 ## Backups
 
 The submissions and every customer's SMTP config live in Postgres. Nightly dump:
@@ -211,6 +240,10 @@ sudo -u postgres crontab -e
 A dump is only half a backup: the SMTP passwords inside it are encrypted with
 `ENCRYPTION_KEY`. Store `.secrets.json` somewhere separate, or a restore leaves
 you with rows you cannot decrypt.
+
+Campaign attachments are stored in Postgres too, so the dump already includes
+them — expect it to grow by the size of the files you attach. Deleting an old
+campaign frees that space.
 
 ---
 
