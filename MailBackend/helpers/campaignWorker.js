@@ -24,6 +24,9 @@ const FAILURE_STREAK_LIMIT = 10;
 const INTERRUPTED = 'The server restarted while this message was being sent, so it may or may not have '
     + 'been delivered. Retry it only if you are sure it did not arrive.';
 
+const STALLED = 'The mail server stopped answering partway through this message, so it may or may not have '
+    + 'arrived. Retry it only if you are sure it did not.';
+
 let timer = null;
 let ticking = false;
 const inFlight = new Set();
@@ -40,6 +43,9 @@ const attachmentCache = new Map();
  *              requeue the row and try again later, automatically
  *   account    login, quota, size or sender refused — every remaining message
  *              would fail the same way, so pause and say why
+ *   stalled    connected and mid-message, then silence for the whole reply
+ *              wait — the server may already have the message, so it is not
+ *              retried on its own: that could deliver it twice
  */
 function classify(error) {
     const code = error && error.code;
@@ -50,6 +56,10 @@ function classify(error) {
     if (/No active SMTP configuration|decrypt/i.test(text)) return 'account';
     if (/quota|sending limit|limit exceeded|daily user sending|too many (messages|recipients)|5\.4\.5/i.test(text)) return 'account';
     if (/5\.3\.4|message size|too large|size exceeds/i.test(text)) return 'account';
+    // Nodemailer's plain "Timeout" is the inactivity timer of an open session;
+    // timeouts before anything was sent say "Connection timeout" or "Greeting
+    // never received" instead, and stay safe to retry.
+    if (code === 'ETIMEDOUT' && text.trim() === 'Timeout') return 'stalled';
     if (['ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'EDNS', 'ECONNREFUSED', 'ENOTFOUND', 'ECONNRESET', 'ETLS', 'EPROTOCOL'].includes(code)) {
         return 'temporary';
     }
@@ -112,10 +122,10 @@ async function handleFailure(campaign, recipient, error) {
     const message = String((error && error.message) || error).slice(0, 500);
     logger.warn('Campaign message failed', { campaignId: campaign.id, to: recipient.email, kind, error: message });
 
-    if (kind === 'recipient') {
+    if (kind === 'recipient' || kind === 'stalled') {
         await POSTGRESQLService.PostgresAny(
             `UPDATE campaign_recipients SET status = 'failed', error = $2 WHERE id = $1`,
-            [recipient.id, message]
+            [recipient.id, kind === 'stalled' ? STALLED : message]
         );
 
         // Ten different addresses in a row all "bad" is really one problem —
@@ -243,6 +253,7 @@ async function sendNext(campaign) {
 
         info = await mailer.sendMail(campaign.tenant_id, {
             to: [recipient.email],
+            bulk: true,
             fromName: campaign.from_name || undefined,
             fromEmail: campaign.from_email || undefined,
             replyTo: campaign.reply_to || undefined,

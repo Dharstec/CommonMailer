@@ -47,6 +47,15 @@ const RULES = [
             + 'or 465 with it on.'
     },
     {
+        // Connected and mid-message, then silence. The connection worked, so
+        // this is not the firewall case below, which fails before connecting.
+        test: (m, code) => code === 'ETIMEDOUT' && /^Timeout$/.test(m.trim()),
+        message: () => 'The mail server stopped answering partway through sending.\n\n'
+            + 'The connection itself worked, so this is not a firewall problem. It happens most with large '
+            + 'attachments: the server checks them before it replies. Try again in a few minutes, and keep '
+            + 'attachments small, or share a link instead.'
+    },
+    {
         // Firewall or security group silently dropping the packets.
         test: (m, code) => code === 'ETIMEDOUT' || /timed? ?out/i.test(m),
         message: () => 'The connection timed out.\n\n'

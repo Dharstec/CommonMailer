@@ -469,6 +469,10 @@ and starting the campaign is refused while the HTML uses an image nobody uploade
   - wrong password, daily quota reached, message too large — the campaign **pauses**
     and says why; fix it and press Resume
   - ten failures in a row — pauses, to protect the account's reputation
+  - the server goes silent partway through a message — that row fails with a
+    note and is never re-sent on its own, because the server may already have
+    it. Campaign messages wait up to 10 minutes for the server to accept them
+    (RFC 5321 asks for this), so a big attachment being checked is not a failure.
 - **Opens** are counted with a 1-pixel image (it can be switched off per
   campaign). They are approximate: Apple Mail loads images for privacy, and some
   inboxes block them.

@@ -12,8 +12,23 @@ const POSTGRESQLService = require('./POSTGRES');
 const { decrypt } = require('./crypto');
 const logger = require('./logger');
 
-// tenant_id -> { transporter, signature }
+// `${tenant_id}:${purpose}` -> { transporter, signature }
 const cache = new Map();
+
+/**
+ * How long to wait for the mail server, by purpose.
+ *
+ * A form notification is sent while the visitor's request waits, so it gives up
+ * quickly. A campaign message can carry megabytes of attachments, and after the
+ * last byte the server checks them before it replies "accepted". RFC 5321
+ * (4.5.3.2.6) asks clients to wait up to 10 minutes for that reply, because
+ * giving up sooner is exactly how a message gets delivered twice: the server
+ * had already taken it, and the sender, not knowing, sends it again.
+ */
+const TIMEOUTS = {
+    form: { connectionTimeout: 15000, greetingTimeout: 10000, socketTimeout: 20000 },
+    bulk: { connectionTimeout: 30000, greetingTimeout: 30000, socketTimeout: 10 * 60 * 1000 }
+};
 
 /** Identifies the config a cached transport was built from. */
 function signatureOf(smtp) {
@@ -28,7 +43,7 @@ async function loadSmtpRow(tenantId) {
     return rows[0] || null;
 }
 
-function buildTransporter(smtp, password) {
+function buildTransporter(smtp, password, purpose) {
     return nodemailer.createTransport({
         host: smtp.host,
         port: Number(smtp.port),
@@ -40,9 +55,7 @@ function buildTransporter(smtp, password) {
         pool: true,
         maxConnections: 3,
         maxMessages: 50,
-        connectionTimeout: 15000,
-        greetingTimeout: 10000,
-        socketTimeout: 20000,
+        ...TIMEOUTS[purpose],
         tls: {
             // Reject self-signed / mismatched certificates. Turning this off is
             // the usual "fix" for SMTP errors and it silently disables TLS
@@ -54,17 +67,20 @@ function buildTransporter(smtp, password) {
 }
 
 /**
+ * @param {number} tenantId
+ * @param {'form'|'bulk'} [purpose]  decides the timeouts; each gets its own pool
  * @returns {{transporter: object, smtp: object}}
  * @throws if the tenant has no active SMTP configuration
  */
-async function getTransporter(tenantId) {
+async function getTransporter(tenantId, purpose = 'form') {
     const smtp = await loadSmtpRow(tenantId);
     if (!smtp) {
         throw new Error('No active SMTP configuration for this customer. Add it in the admin panel.');
     }
 
+    const key = `${tenantId}:${purpose}`;
     const signature = signatureOf(smtp);
-    const cached = cache.get(tenantId);
+    const cached = cache.get(key);
     if (cached && cached.signature === signature) {
         return { transporter: cached.transporter, smtp };
     }
@@ -72,18 +88,21 @@ async function getTransporter(tenantId) {
     if (cached) cached.transporter.close();
 
     const password = decrypt(smtp.password_enc);
-    const transporter = buildTransporter(smtp, password);
-    cache.set(tenantId, { transporter, signature });
+    const transporter = buildTransporter(smtp, password, purpose);
+    cache.set(key, { transporter, signature });
 
     return { transporter, smtp };
 }
 
 /** Called after SMTP settings are saved so the next send picks up new values. */
 function invalidate(tenantId) {
-    const cached = cache.get(tenantId);
-    if (cached) {
-        cached.transporter.close();
-        cache.delete(tenantId);
+    for (const purpose of Object.keys(TIMEOUTS)) {
+        const key = `${tenantId}:${purpose}`;
+        const cached = cache.get(key);
+        if (cached) {
+            cached.transporter.close();
+            cache.delete(key);
+        }
     }
 }
 
@@ -98,9 +117,13 @@ function invalidate(tenantId) {
  * Dharstec", or an alias the mailbox may send as). The address object is passed
  * to Nodemailer rather than a hand-built string so a name containing quotes or
  * non-ASCII characters is encoded correctly.
+ *
+ * `bulk` marks a campaign message: it gets the long reply wait (see TIMEOUTS).
  */
-async function sendMail(tenantId, { to, cc, bcc, subject, html, text, replyTo, fromName, fromEmail, attachments, headers }) {
-    const { transporter, smtp } = await getTransporter(tenantId);
+async function sendMail(tenantId, {
+    to, cc, bcc, subject, html, text, replyTo, fromName, fromEmail, attachments, headers, bulk = false
+}) {
+    const { transporter, smtp } = await getTransporter(tenantId, bulk ? 'bulk' : 'form');
 
     const info = await transporter.sendMail({
         from: { name: fromName || smtp.from_name, address: fromEmail || smtp.from_email },

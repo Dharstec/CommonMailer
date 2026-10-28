@@ -34,6 +34,9 @@ const EDITABLE = ['draft', 'scheduled', 'paused'];
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
+/** Under nginx's 30 s proxy_read_timeout, with room to answer before it gives up. */
+const TEST_REPLY_WAIT_MS = 25 * 1000;
+
 /**
  * Gmail and Outlook refuse mail carrying these outright — the message bounces
  * for every recipient — so they are stopped at upload rather than mid-send.
@@ -729,24 +732,48 @@ const sendTest = async (req, res) => {
             unsubscribeUrl
         });
 
+        const sending = mailer.sendMail(row.tenant_id, {
+            to: [to],
+            bulk: true,
+            fromName: draft.from_name || undefined,
+            fromEmail: draft.from_email || undefined,
+            replyTo: draft.reply_to || undefined,
+            subject: `[TEST] ${message.subject}`,
+            html: message.html,
+            text: message.text,
+            attachments: mailAttachments(files, message.html),
+            headers: {
+                'List-Unsubscribe': `<${unsubscribeUrl}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+            }
+        });
+
+        // A message with megabytes attached can take the server longer to accept
+        // than nginx waits for this request (30 s). Past TEST_REPLY_WAIT_MS the
+        // panel is told it is still on its way and the send finishes by itself —
+        // instead of a 504 for an email that then arrives anyway.
+        let timer;
+        const stillSending = new Promise((resolve) => { timer = setTimeout(resolve, TEST_REPLY_WAIT_MS, 'still-sending'); });
+        let outcome;
         try {
-            await mailer.sendMail(row.tenant_id, {
-                to: [to],
-                fromName: draft.from_name || undefined,
-                fromEmail: draft.from_email || undefined,
-                replyTo: draft.reply_to || undefined,
-                subject: `[TEST] ${message.subject}`,
-                html: message.html,
-                text: message.text,
-                attachments: mailAttachments(files, message.html),
-                headers: {
-                    'List-Unsubscribe': `<${unsubscribeUrl}>`,
-                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-                }
-            });
+            outcome = await Promise.race([sending, stillSending]);
         } catch (error) {
             logger.warn('Campaign test send failed', { id, error: error.message });
             return res.status(400).json({ status: 'error', message: explainSmtpError(error, row.smtp_host || '') });
+        } finally {
+            clearTimeout(timer);
+        }
+
+        if (outcome === 'still-sending') {
+            sending
+                .then(() => logger.info('Campaign test sent after a slow reply', { id, to }))
+                .catch((error) => logger.warn('Campaign test send failed after the panel was answered', { id, to, error: error.message }));
+            const size = files.reduce((sum, f) => sum + Number(f.size_bytes || 0), 0);
+            return res.status(202).json({
+                status: 'success',
+                message: `The mail server is still accepting this message${size ? ` (${formatBytes(size)} of attachments)` : ''}. `
+                    + `The test to ${to} should arrive in a minute or two.`
+            });
         }
 
         const as = recipient.sample ? '' : `, personalised as ${recipient.data.email}`;
