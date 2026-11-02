@@ -99,6 +99,10 @@ export class CampaignService {
   removeAttachment(id: number, attachmentId: number): Observable<ApiResponse<null>> {
     return this.api.delete(`campaigns/${id}/attachments/${attachmentId}`);
   }
+  /** A logo or banner; the answer is the link the design uses. */
+  uploadImage(id: number, image: Blob): Observable<ApiResponse<{ url: string; size_bytes: number }>> {
+    return this.api.upload(`campaigns/${id}/images`, image);
+  }
 
   /** Both take the editor's unsaved state, so what you preview is what you test. */
   preview(id: number, body: Campaign & { recipient_id?: number | null }): Observable<ApiResponse<CampaignPreview>> {

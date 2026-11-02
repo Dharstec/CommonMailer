@@ -12,6 +12,7 @@ import {
   CampaignRecipient, CampaignSender, CampaignStats, ImportSummary, Pagination, Tenant
 } from '../../core/models';
 import { STATUS_LABELS, campaignStatusClass } from './campaign-list.component';
+import { EmailImage, EmailImageKind, luminanceOf, prepareEmailImage } from './email-image';
 
 type Tab = 'details' | 'recipients' | 'content' | 'send' | 'report';
 type TextField = 'subject' | 'preheader' | 'headline' | 'body' | 'cta_text' | 'cta_url' | 'signature'
@@ -178,6 +179,9 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
   previewRecipientId: number | null = null;
   previewLoading = false;
   attachmentsUploading = 0;
+  imageUploading: EmailImageKind | null = null;
+  /** How light the logo uploaded in this visit is, for the contrast warning. */
+  private logoInk: { url: string; ink: number } | null = null;
   formattingOpen = false;
 
   // Send
@@ -769,6 +773,62 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
       this.campaign.attachments = [...this.attachments, res.data];
       this.schedulePreview();
     });
+  }
+
+  /**
+   * A logo or banner from the computer: made email-ready in the browser, stored
+   * by the API, and its link put in the field — nothing to host anywhere first.
+   */
+  async onImage(event: Event, kind: EmailImageKind): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !this.campaignId) return;
+
+    this.imageUploading = kind;
+    let image: EmailImage;
+    try {
+      image = await prepareEmailImage(file, kind);
+    } catch (err) {
+      this.imageUploading = null;
+      this.toast.error((err as Error).message);
+      return;
+    }
+
+    this.service.uploadImage(this.campaignId, image.blob).subscribe({
+      next: (res) => {
+        this.imageUploading = null;
+        if (kind === 'logo') {
+          this.campaign.content.logo_url = res.data.url;
+          this.logoInk = image.ink === null ? null : { url: res.data.url, ink: image.ink };
+        } else {
+          this.campaign.content.hero_image_url = res.data.url;
+        }
+        this.changed();
+        this.toast.success(`${kind === 'logo' ? 'Logo' : 'Banner'} added (${formatBytes(res.data.size_bytes)}). Save to keep it.`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.imageUploading = null;
+        this.fail(err, `Could not upload the ${kind}.`);
+      }
+    });
+  }
+
+  /**
+   * Spotlight and Aurora put the logo on the brand colour, Executive on white.
+   * A dark logo on a dark header — or a light one on white — all but vanishes,
+   * and nothing else would say so.
+   */
+  get logoWarning(): string {
+    const logo = this.logoInk;
+    if (!logo || logo.url !== this.campaign.content.logo_url) return '';
+    const onBrand = this.campaign.design === 'spotlight' || this.campaign.design === 'aurora';
+    const background = onBrand ? luminanceOf(this.brandColor) : 1;
+    if ((Math.max(logo.ink, background) + 0.05) / (Math.min(logo.ink, background) + 0.05) >= 2) return '';
+    // Dark is where white reads better than black: below about 0.18.
+    return background < 0.18
+      ? 'This logo is dark, and so is the header it sits on, so it will hardly show. Upload a white version of the logo, or choose a light brand colour.'
+      : 'This logo is light, and so is the background it sits on, so it will hardly show. Upload a dark version of the logo, or choose a darker brand colour.';
   }
 
   removeAttachment(a: CampaignAttachment): void {

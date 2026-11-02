@@ -429,19 +429,34 @@
             <ng-container *ngIf="rich">
               <div class="grid gap-4 sm:grid-cols-[1fr_9rem]">
                 <div>
-                  <label class="label">Logo URL</label>
-                  <input class="input" [(ngModel)]="campaign.content.logo_url" placeholder="https://yoursite.com/logo.png"/>
+                  <label class="label">Logo</label>
+                  <div class="flex gap-2">
+                    <input class="input min-w-0" [(ngModel)]="campaign.content.logo_url" placeholder="Upload one, or paste https://…"/>
+                    <label class="btn-ghost shrink-0 cursor-pointer" [class.opacity-50]="imageUploading" [class.pointer-events-none]="imageUploading">
+                      <input type="file" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg"
+                             [disabled]="!!imageUploading" (change)="$event.stopPropagation(); onImage($event, 'logo')"/>
+                      {{ imageUploading === 'logo' ? 'Uploading…' : 'Upload' }}
+                    </label>
+                  </div>
                 </div>
                 <div>
                   <label class="label">Logo width (px)</label>
                   <input class="input" type="number" min="40" max="300" [(ngModel)]="campaign.content.logo_width"/>
                 </div>
               </div>
-              <p class="hint -mt-2">A PNG hosted on the customer's website works best. Without one, the company name is shown as text.</p>
+              <p class="hint -mt-2">Upload from your computer — SVG becomes PNG automatically. Without a logo, the company name is shown as text.</p>
+              <p *ngIf="logoWarning" class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">{{ logoWarning }}</p>
               <div>
-                <label class="label">Banner image URL</label>
-                <input class="input" [(ngModel)]="campaign.content.hero_image_url" placeholder="https://yoursite.com/banner.jpg"/>
-                <p class="hint">Optional; 1200 &times; 600 px looks sharp. Many inboxes hide images until the reader allows them, so keep the key message in the text.</p>
+                <label class="label">Banner image</label>
+                <div class="flex gap-2">
+                  <input class="input min-w-0" [(ngModel)]="campaign.content.hero_image_url" placeholder="Upload one, or paste https://…"/>
+                  <label class="btn-ghost shrink-0 cursor-pointer" [class.opacity-50]="imageUploading" [class.pointer-events-none]="imageUploading">
+                    <input type="file" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg"
+                           [disabled]="!!imageUploading" (change)="$event.stopPropagation(); onImage($event, 'banner')"/>
+                    {{ imageUploading === 'banner' ? 'Uploading…' : 'Upload' }}
+                  </label>
+                </div>
+                <p class="hint">Optional. Big pictures are made email-sized (1200 px wide) as they upload. Many inboxes hide images until the reader allows them, so keep the key message in the text.</p>
               </div>
             </ng-container>
           </div>
