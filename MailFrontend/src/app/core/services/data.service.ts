@@ -91,6 +91,9 @@ export class CampaignService {
     return this.api.upload(`campaigns/${id}/recipients`, file, { filename });
   }
   clearRecipients(id: number): Observable<ApiResponse<null>> { return this.api.delete(`campaigns/${id}/recipients`); }
+  removeRecipient(id: number, recipientId: number): Observable<ApiResponse<null>> {
+    return this.api.delete(`campaigns/${id}/recipients/${recipientId}`);
+  }
   exportRecipients(id: number): Observable<Blob> { return this.api.download(`campaigns/${id}/recipients/export`); }
 
   uploadAttachment(id: number, file: File): Observable<ApiResponse<CampaignAttachment>> {

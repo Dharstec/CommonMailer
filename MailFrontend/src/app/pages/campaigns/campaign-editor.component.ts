@@ -171,6 +171,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
   importSummary: ImportSummary | null = null;
   importRejected = false;
   confirmClearOpen = false;
+  recipientToRemove: CampaignRecipient | null = null;
 
   // Content
   preview: CampaignPreview | null = null;
@@ -647,6 +648,28 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
         this.schedulePreview();
       },
       error: () => { this.confirmClearOpen = false; }
+    });
+  }
+
+  /** Not yet sent: still possible to take them off, also while the campaign is sending. */
+  canRemove(r: CampaignRecipient): boolean {
+    return r.status === 'pending' || r.status === 'failed';
+  }
+
+  removeRecipient(): void {
+    const r = this.recipientToRemove;
+    this.recipientToRemove = null;
+    if (!r || !this.campaignId) return;
+    this.service.removeRecipient(this.campaignId, r.id).subscribe({
+      next: (res) => {
+        this.toast.success(res.message || `${r.email} removed.`);
+        if (this.previewRecipientId === r.id) this.previewRecipientId = null;
+        this.previewChoices = this.previewChoices.filter((c) => c.id !== r.id);
+        this.recipients = this.recipients.filter((x) => x.id !== r.id);
+        this.refreshStatus();
+      },
+      // A 409 ("already sent") is shown by the interceptor; the list is refreshed to match.
+      error: () => this.loadRecipients(true)
     });
   }
 

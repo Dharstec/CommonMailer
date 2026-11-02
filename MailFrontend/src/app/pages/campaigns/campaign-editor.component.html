@@ -971,6 +971,7 @@
             <th class="th">Status</th>
             <th class="th">Sent</th>
             <th class="th">Opened</th>
+            <th class="th"><span class="sr-only">Remove</span></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -987,6 +988,10 @@
             <td class="td whitespace-nowrap">
               {{ r.opened_at ? (r.opened_at | date:'d MMM, h:mm a') : '—' }}
               <span *ngIf="r.open_count > 1" class="text-xs text-slate-400">&times;{{ r.open_count }}</span>
+            </td>
+            <td class="td text-right whitespace-nowrap">
+              <button *ngIf="canRemove(r)" type="button" class="btn-ghost btn-sm !text-red-600"
+                      title="Take them off this campaign" (click)="recipientToRemove = r">Remove</button>
             </td>
           </tr>
         </tbody>
@@ -1044,6 +1049,10 @@
 <app-confirm [open]="confirmDeleteOpen" title="Delete this campaign?"
              message="The message, the recipient list and the report will be deleted. People who unsubscribed stay on the do-not-email list.&#10;&#10;This cannot be undone."
              (confirmed)="remove()" (cancelled)="confirmDeleteOpen = false"></app-confirm>
+
+<app-confirm [open]="!!recipientToRemove" title="Remove from this campaign?" confirmLabel="Remove"
+             [message]="(recipientToRemove?.email || '') + ' will not get this email.\n\nTo never email them from any campaign, add them to the Do-not-email list instead.'"
+             (confirmed)="removeRecipient()" (cancelled)="recipientToRemove = null"></app-confirm>
 
 <app-confirm [open]="confirmClearOpen" title="Clear the recipient list?" confirmLabel="Clear list"
              message="Every recipient is removed from this campaign. You can upload a new list straight after."
