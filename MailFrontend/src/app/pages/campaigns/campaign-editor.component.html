@@ -701,28 +701,25 @@
           <div class="card-head">
             <div>
               <h2 class="font-semibold text-slate-900">Delivery</h2>
-              <p class="text-xs text-slate-500 mt-0.5">A steady pace keeps the account out of spam.</p>
+              <p class="text-xs text-slate-500 mt-0.5">A slow, steady pace keeps your domain out of spam.</p>
             </div>
           </div>
           <div class="card-body space-y-4">
-            <div>
-              <label class="label">Speed</label>
-              <select class="input" [(ngModel)]="campaign.rate_per_minute">
-                <option *ngFor="let s of speeds" [ngValue]="s">{{ s }} emails a minute{{ s === 20 ? ' (recommended)' : '' }}</option>
-              </select>
-              <p class="hint">Every email goes out on its own, one after another — never as a Bcc blast.</p>
-            </div>
-            <div>
-              <label class="label">Daily limit</label>
-              <input class="input" type="number" min="0" [(ngModel)]="campaign.daily_limit"/>
-              <div class="flex flex-wrap gap-1.5 mt-2">
-                <button *ngFor="let p of dailyPresets" type="button" class="btn-ghost btn-sm"
-                        [class.!border-brand-500]="dailyIs(p.value)" [class.!text-brand-700]="dailyIs(p.value)"
-                        (click)="campaign.daily_limit = p.value; changed()">{{ p.label }}</button>
-              </div>
-              <p class="hint">
-                0 means no limit. When the limit is reached, sending pauses and carries on by itself 24 hours later.
-                Gmail allows about 500 a day, Google Workspace about 2,000.
+            <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-3 text-sm text-emerald-900">
+              <p class="font-semibold flex items-center gap-1.5">
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/>
+                </svg>
+                Safe pace, fixed for this mailbox
+              </p>
+              <ul class="mt-2 space-y-1 text-[13px] text-emerald-800 list-disc pl-5">
+                <li>One email every {{ gapText }} — one at a time, never a Bcc blast.</li>
+                <li>At most {{ pace.daily_limit | number }} a day from <span class="font-medium break-all">{{ mailbox }}</span>, shared by all of its campaigns.</li>
+                <li>The rest wait in the queue and go out by themselves, day after day.</li>
+              </ul>
+              <p class="mt-2 text-xs text-emerald-700">
+                Last 24 hours: {{ pace.last_24h | number }} of {{ pace.daily_limit | number }} used.
               </p>
             </div>
             <label class="flex items-start gap-2.5 text-sm text-slate-700">
@@ -735,7 +732,7 @@
               </span>
             </label>
             <p *ngIf="estimate" class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-600">
-              {{ stats.pending | number }} email(s) will take {{ estimate }}.
+              {{ stats.pending | number }} email(s) will take {{ estimate }}. Leave the campaign running — it carries on by itself.
             </p>
           </div>
         </fieldset>
@@ -769,7 +766,7 @@
           <p class="text-sm font-semibold text-slate-900">Getting into the inbox</p>
           <ul class="list-disc pl-5 space-y-1 text-[13px] text-slate-600">
             <li>Send from the customer's own domain, with SPF, DKIM and DMARC set up at the domain host.</li>
-            <li>A new mailbox? Start with 30–50 a day and grow it over two weeks.</li>
+            <li>Watch the mailbox for "delivery failed" replies, and put those addresses on the Do-not-email list — bounces hurt a new domain fast.</li>
             <li>Personalise the subject and greeting; avoid ALL CAPS and "FREE!!!".</li>
             <li>The Personal design reaches Gmail's Primary tab most often.</li>
             <li>Email people who would expect to hear from you — complaints hurt more than anything else.</li>
@@ -790,7 +787,7 @@
             <div class="min-w-0">
               <p class="font-semibold text-slate-900">Sending</p>
               <p class="text-sm text-slate-500">
-                {{ stats.sent | number }} of {{ stats.total | number }} sent &middot; {{ campaign.rate_per_minute }} a minute
+                {{ stats.sent | number }} of {{ stats.total | number }} sent &middot; {{ paceText }}
                 <ng-container *ngIf="estimate">&middot; {{ estimate }} to go</ng-container>
               </p>
             </div>
@@ -842,7 +839,17 @@
       </div>
 
       <div *ngIf="campaign.status_reason" class="rounded-lg px-4 py-3 text-sm whitespace-pre-line border"
-           [ngClass]="campaign.status === 'paused' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-sky-50 border-sky-200 text-sky-900'">{{ campaign.status_reason }}<ng-container *ngIf="campaign.status === 'sending' && campaign.next_send_at"> Next attempt {{ campaign.next_send_at | date:'d MMM, h:mm a' }}.</ng-container></div>
+           [ngClass]="campaign.status === 'paused' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-sky-50 border-sky-200 text-sky-900'">{{ campaign.status_reason }}</div>
+
+      <div *ngIf="campaign.status === 'sending'" class="rounded-lg px-4 py-3 text-sm border bg-emerald-50 border-emerald-200 text-emerald-900">
+        <ng-container *ngIf="dayUsed; else underLimit">
+          The {{ pace.daily_limit | number }} emails for today have gone out from {{ mailbox }}. The rest wait in the queue and go out by themselves.
+        </ng-container>
+        <ng-template #underLimit>
+          Last 24 hours: {{ pace.last_24h | number }} of {{ pace.daily_limit | number }} emails from {{ mailbox }}.
+        </ng-template>
+        <ng-container *ngIf="campaign.next_send_at"> Next email {{ campaign.next_send_at | date:'EEE d MMM, h:mm a' }}.</ng-container>
+      </div>
 
       <div class="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         <div class="card card-body">
@@ -1002,7 +1009,8 @@
           *ngIf="when === 'later'"> on <span class="font-semibold">{{ scheduleAt | date:'EEEE d MMM, h:mm a' }}</span></ng-container>.
       </p>
       <p class="mt-2 text-sm text-slate-500">
-        At {{ campaign.rate_per_minute }} a minute this takes {{ estimate }}. You can pause at any time.
+        At {{ paceText }}, this takes {{ estimate }}. What does not fit in a day waits in the queue and goes out
+        by itself the next day. You can pause at any time.
       </p>
       <div class="mt-6 flex justify-end gap-2">
         <button type="button" class="btn-ghost" (click)="confirmStartOpen = false">Not yet</button>

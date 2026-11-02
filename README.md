@@ -391,8 +391,8 @@ recipient at a time, personalised, with attachments.
 2. **Recipients** — upload a CSV (format below) or paste addresses.
 3. **Design & content** — pick a design, write the message, attach files. The
    live preview is the real email for a real row of the list.
-4. **Review & send** — a checklist, a test email to yourself, speed and daily
-   limit, then send now or schedule.
+4. **Review & send** — a checklist and a test email to yourself, then send now
+   or schedule. The pace is fixed and safe — see *Sending pace* below.
 
 The **Report** then shows sent, opened, failed and unsubscribed — per person, live.
 
@@ -416,6 +416,8 @@ rajesh@globexsteel.com,Rajesh,Kumar,Globex Steel,Chennai
 - Up to 20,000 rows and 5 MB. Invalid addresses, misspelt domains (`gmial.com`)
   and duplicates are skipped and listed with their row numbers.
 - Anyone who unsubscribed from that customer before is left out automatically.
+- Emails go out in the order of the file, so put your best contacts first —
+  at 10 a day, row 300 is a month away.
 
 ### Merge fields
 
@@ -451,24 +453,43 @@ inside the message (inline, `multipart/related`), so it needs no website to host
 it and shows without the reader having to allow images. The preview shows it,
 and starting the campaign is refused while the HTML uses an image nobody uploaded.
 
+### Sending pace
+
+Campaign emails go out slowly, on purpose: a young domain that suddenly sends a
+lot is exactly what spam filters look for.
+
+- **At least 5 minutes between two emails**, one at a time — never a burst.
+- **At most 10 emails in any 24 hours** from a customer's mailbox. The limit is
+  the mailbox's, shared by all of its campaigns, so two campaigns cannot double it.
+- **The rest wait in the queue** and go out by themselves on the following days
+  — 37 recipients take about 4 days. Leave the campaign running; a restart or a
+  deploy does not lose its place.
+
+Every email handed to the mail server counts, including ones it refused and
+retries. Retrying failed messages or deleting a campaign does not give the day
+back. Test emails to yourself are not counted.
+
+The numbers are set on the server, not in the panel: `CAMPAIGN_GAP_MINUTES` and
+`CAMPAIGN_DAILY_LIMIT` in `MailBackend/.env` (defaults 5 and 10). Raise them only
+after weeks of clean sending, and a little at a time.
+
 ### How sending works
 
 - **One email per recipient, never Bcc.** Each is personalised, carries its own
   unsubscribe link, and a bad address fails only itself.
 - **A background sender** inside the API process works through the queue at the
-  campaign's speed (20 a minute by default), with an optional daily limit that
-  waits and then continues by itself. Its state lives in the database, so a
-  restart or deploy resumes exactly where it stopped.
+  mailbox's pace. Its state lives in the database, so a restart or deploy
+  resumes exactly where it stopped.
 - **Unsubscribe** is in every email twice: a visible link, and the
   `List-Unsubscribe` one-click header that Gmail and Yahoo require for bulk mail.
   It applies per customer, to all of its future campaigns. Someone who replied
   "please remove me" goes in **Campaigns → Do-not-email list**.
 - **Failures are handled by kind:**
   - a bad address — that row fails, sending carries on
-  - "try again later" or an unreachable server — retried automatically after 1, 2, 5, 10, then 15 minutes
+  - "try again later" or an unreachable server — retried automatically after 5, 10, 15, 30, then 60 minutes
   - wrong password, daily quota reached, message too large — the campaign **pauses**
     and says why; fix it and press Resume
-  - ten failures in a row — pauses, to protect the account's reputation
+  - three failures in a row — pauses, to protect the domain's reputation
   - the server goes silent partway through a message — that row fails with a
     note and is never re-sent on its own, because the server may already have
     it. Campaign messages wait up to 10 minutes for the server to accept them
@@ -480,15 +501,18 @@ and starting the campaign is refused while the HTML uses an image nobody uploade
 ### Getting into the inbox
 
 1. Set up SPF, DKIM and DMARC on the customer's domain — the biggest single factor.
-2. Warm up a new mailbox: 30–50 a day for the first week, then grow.
-3. Gmail allows about 500 recipients a day, Google Workspace about 2,000 — set the daily limit.
+2. Keep the slow pace above while the domain is new. Bounces ("delivery failed"
+   replies in the mailbox) hurt a new domain fast: put those addresses on the
+   **Do-not-email list**.
+3. Send only to a clean list — addresses you have seen work, not bought or guessed.
 4. Personalise the subject, always write preview text, and skip ALL CAPS and "FREE!!!".
 5. For first contact use the Personal design, and keep attachments small (a PDF
    under ~2 MB) or send a link.
 6. Only email people who would expect to hear from you.
 
 > The sender runs inside the API process. Keep pm2 at a single instance, as
-> `ecosystem.config.js` does — two processes would each send at full speed.
+> `ecosystem.config.js` does. The pace is claimed in the database, so even a
+> second process could not send faster.
 
 ---
 
@@ -512,9 +536,13 @@ whose SPF record authorises this SMTP server.
 **Status `failed` in the panel** — SMTP broke, the enquiry is safe. Fix the
 credentials, then **Resend** from the submission page.
 
-**Campaign paused: "reached its sending limit"** — the mailbox's daily quota is
-used up. Resume it the next day, and set a daily limit on the campaign so it
-spreads itself out.
+**Campaign paused: "reached its sending limit"** — the mailbox's own daily quota
+at its provider is used up, usually by other mail sent from it. Resume it the
+next day.
+
+**A campaign says "Sending" but nothing went out for hours** — the mailbox has
+sent its 10 for the last 24 hours. The Report shows when the next email goes;
+the rest follow by themselves.
 
 **A PDF attaches but a bigger file (a PowerPoint deck) does not** — nginx on the
 server still has its old 2 MB limit. The panel says the server refused the

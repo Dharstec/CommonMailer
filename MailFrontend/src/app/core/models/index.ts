@@ -221,6 +221,14 @@ export interface CampaignSender {
   reply_to: string | null;
 }
 
+/** How fast the sending mailbox may go — set on the server, shared by all its campaigns. */
+export interface CampaignPace {
+  gap_minutes: number;
+  daily_limit: number;
+  /** Campaign emails this mailbox handed to its server in the last 24 hours. */
+  last_24h: number;
+}
+
 export interface Campaign {
   id?: number;
   tenant_id: number | null;
@@ -242,8 +250,6 @@ export interface Campaign {
   import_summary?: ImportSummary | null;
 
   track_opens: boolean;
-  rate_per_minute: number;
-  daily_limit: number;
   scheduled_at?: string | null;
   next_send_at?: string | null;
   status_reason?: string | null;
@@ -255,6 +261,7 @@ export interface Campaign {
   stats?: CampaignStats;
   attachments?: CampaignAttachment[];
   sender?: CampaignSender;
+  pace?: CampaignPace;
   editable?: { content: boolean; recipients: boolean };
 }
 

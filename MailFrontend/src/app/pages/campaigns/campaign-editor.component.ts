@@ -8,7 +8,7 @@ import { CampaignService, TenantService } from '../../core/services/data.service
 import { ClipboardService } from '../../core/services/clipboard.service';
 import { ToastService } from '../../core/services/toast.service';
 import {
-  ApiResponse, Campaign, CampaignAttachment, CampaignContent, CampaignDesign, CampaignPreview,
+  ApiResponse, Campaign, CampaignAttachment, CampaignContent, CampaignDesign, CampaignPace, CampaignPreview,
   CampaignRecipient, CampaignSender, CampaignStats, ImportSummary, Pagination, Tenant
 } from '../../core/models';
 import { STATUS_LABELS, campaignStatusClass } from './campaign-list.component';
@@ -43,6 +43,9 @@ const BRAND_DEFAULT = '#4f46e5';
 const EMPTY_STATS: CampaignStats = {
   total: 0, pending: 0, sending: 0, sent: 0, failed: 0, skipped: 0, opened: 0, unsubscribed: 0
 };
+
+/** Shown only until the server's own numbers arrive with the saved campaign; the server enforces its own. */
+const DEFAULT_PACE: CampaignPace = { gap_minutes: 5, daily_limit: 10, last_24h: 0 };
 
 const DESIGNS: DesignOption[] = [
   {
@@ -130,9 +133,7 @@ function blankCampaign(): Campaign {
     design: 'executive',
     content: { ...STARTER },
     custom_html: '',
-    track_opens: true,
-    rate_per_minute: 20,
-    daily_limit: 0
+    track_opens: true
   };
 }
 
@@ -191,12 +192,6 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
 
   readonly designs = DESIGNS;
   readonly swatches = SWATCHES;
-  readonly speeds = [5, 10, 20, 30, 60];
-  readonly dailyPresets = [
-    { label: 'No limit', value: 0 },
-    { label: 'Gmail · 400', value: 400 },
-    { label: 'Google Workspace · 1,800', value: 1800 }
-  ];
   readonly statusLabels = STATUS_LABELS;
   readonly statusClass = campaignStatusClass;
   readonly formatBytes = formatBytes;
@@ -426,9 +421,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
         logo_width: Number.isFinite(width) && width > 0 ? Math.min(300, Math.max(40, Math.round(width))) : null
       },
       custom_html: c.custom_html || null,
-      track_opens: c.track_opens,
-      rate_per_minute: Number(c.rate_per_minute) || 20,
-      daily_limit: Math.max(0, Math.floor(Number(c.daily_limit) || 0))
+      track_opens: c.track_opens
     };
   }
 
@@ -853,20 +846,38 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
       && this.checks.every((c) => c.state !== 'missing');
   }
 
-  /** How long the queue takes at the chosen speed and daily limit. */
+  get pace(): CampaignPace { return this.campaign.pace || DEFAULT_PACE; }
+
+  /** The sending account's own address — the limit is that mailbox's, across all its campaigns. */
+  get mailbox(): string { return this.sender?.from_email || this.tenant?.name || 'this mailbox'; }
+
+  get dayUsed(): boolean { return this.pace.last_24h >= this.pace.daily_limit; }
+
+  /** "5 minutes" */
+  get gapText(): string {
+    const gap = this.pace.gap_minutes;
+    return gap >= 1 ? `${+gap.toFixed(1)} minute${gap === 1 ? '' : 's'}` : `${Math.round(gap * 60)} seconds`;
+  }
+
+  /** "one email every 5 minutes, at most 10 a day" */
+  get paceText(): string {
+    return `one email every ${this.gapText}, at most ${this.pace.daily_limit.toLocaleString()} a day`;
+  }
+
+  /** How long the queue takes at the mailbox's pace, counting what it has already used today. */
   get estimate(): string {
     const n = this.stats.pending;
     if (!n) return '';
-    const rate = Number(this.campaign.rate_per_minute) || 20;
-    const daily = Number(this.campaign.daily_limit) || 0;
-    if (daily && n > daily) return `about ${Math.ceil(n / daily)} days at ${daily.toLocaleString()} a day`;
-    const minutes = Math.ceil(n / rate);
-    if (minutes < 60) return `about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+    const { gap_minutes: gap, daily_limit: daily, last_24h: used } = this.pace;
+    const today = Math.max(0, daily - used);
+    if (n > today) {
+      const days = Math.ceil((n - today) / daily) + (today ? 1 : 0);
+      return days === 1 ? 'about a day' : `about ${days} days`;
+    }
+    const minutes = Math.round((n - 1) * gap);
+    if (minutes < 1) return 'a moment';
+    if (minutes < 60) return `about ${minutes} minutes`;
     return `about ${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-  }
-
-  dailyIs(value: number): boolean {
-    return Number(this.campaign.daily_limit) === value;
   }
 
   get minSchedule(): string {
@@ -1020,6 +1031,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
           started_at: data.started_at,
           completed_at: data.completed_at,
           stats: data.stats,
+          pace: data.pace,
           editable: data.editable
         });
         if (this.tab === 'report' || this.tab === 'recipients') this.loadRecipients(true);

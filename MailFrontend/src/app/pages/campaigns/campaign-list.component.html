@@ -97,6 +97,7 @@
                 {{ statusLabels[c.status!] }}
               </span>
               <p *ngIf="c.status === 'scheduled'" class="text-xs text-slate-500 mt-1">{{ c.scheduled_at | date:'d MMM, h:mm a' }}</p>
+              <p *ngIf="c.status === 'sending' && c.next_send_at" class="text-xs text-slate-500 mt-1">Next {{ c.next_send_at | date:'d MMM, h:mm a' }}</p>
               <p *ngIf="c.status === 'paused' && c.status_reason" class="text-xs text-amber-700 mt-1">Needs attention</p>
             </td>
             <td class="td">

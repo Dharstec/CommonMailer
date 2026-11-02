@@ -206,9 +206,9 @@ const campaignSchema = Joi.object({
     // You author it, like the form templates; recipient values merged into it
     // are escaped.
     custom_html: Joi.string().max(200000).allow('', null).label('Custom HTML'),
-    track_opens: Joi.boolean().default(true),
-    rate_per_minute: Joi.number().integer().min(1).max(60).default(20).label('Sending speed'),
-    daily_limit: Joi.number().integer().min(0).max(100000).default(0).label('Daily limit')
+    // No speed or daily limit here: the pace is the mailbox's, set on the
+    // server (helpers/campaignPace.js), and is not the panel's to loosen.
+    track_opens: Joi.boolean().default(true)
 });
 
 /** Preview and test send take the unsaved editor state, so what you see is what you test. */

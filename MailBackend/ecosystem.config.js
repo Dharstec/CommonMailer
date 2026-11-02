@@ -4,8 +4,8 @@
  * Single instance on purpose: `pg` pools per process, and one node process
  * handles contact-form traffic for far more than 10 static sites. Cluster mode
  * would multiply idle DB connections for no benefit — and the campaign sender
- * runs inside this process, so every extra instance would send at full speed
- * again, breaking each campaign's per-minute and daily limits.
+ * runs inside this process. Its pace is claimed in the database, so a second
+ * instance could not send any faster, but there is no reason to run one.
  */
 module.exports = {
     apps: [{

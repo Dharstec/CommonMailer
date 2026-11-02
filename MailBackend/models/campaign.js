@@ -21,6 +21,7 @@ const {
 } = require('../helpers/campaignRender');
 const { baseUrl } = require('../helpers/links');
 const { explainSmtpError } = require('../helpers/smtpErrors');
+const campaignPace = require('../helpers/campaignPace');
 const logger = require('../helpers/logger');
 
 const handleServerError = (res, error, where) => {
@@ -109,9 +110,7 @@ function campaignColumns(body) {
         design: body.design,
         content: JSON.stringify(body.content || {}),
         custom_html: body.custom_html || null,
-        track_opens: body.track_opens,
-        rate_per_minute: body.rate_per_minute,
-        daily_limit: body.daily_limit
+        track_opens: body.track_opens
     };
 }
 
@@ -262,8 +261,10 @@ const getOne = async (req, res) => {
         const row = id && await loadCampaign(id);
         if (!row) return notFound(res);
 
-        const [stats, attachments] = await Promise.all([statsOf(id), listAttachments(id)]);
-        res.json({ status: 'success', data: present(row, stats, attachments) });
+        const [stats, attachments, pace] = await Promise.all([
+            statsOf(id), listAttachments(id), campaignPace.status(row.tenant_id)
+        ]);
+        res.json({ status: 'success', data: { ...present(row, stats, attachments), pace } });
     } catch (error) {
         handleServerError(res, error, 'campaign.getOne');
     }
@@ -349,9 +350,9 @@ const duplicate = async (req, res) => {
         const copy = await POSTGRESQLService.PostgresTransaction(async (client) => {
             const inserted = await client.query(
                 `INSERT INTO campaigns (tenant_id, name, from_name, from_email, reply_to, subject, preheader,
-                                        design, content, custom_html, track_opens, rate_per_minute, daily_limit)
+                                        design, content, custom_html, track_opens)
                  SELECT tenant_id, left(name || ' (copy)', 150), from_name, from_email, reply_to, subject, preheader,
-                        design, content, custom_html, track_opens, rate_per_minute, daily_limit
+                        design, content, custom_html, track_opens
                    FROM campaigns WHERE id = $1
                  RETURNING *`,
                 [id]
@@ -435,9 +436,12 @@ const uploadRecipients = async (req, res) => {
             for (let i = 0; i < rows.length; i += 2000) {
                 const chunk = rows.slice(i, i + 2000);
                 await client.query(
+                    // In file order: the sender works through the list by id, so
+                    // whoever is first in the CSV is emailed first.
                     `INSERT INTO campaign_recipients (campaign_id, email, data, token)
                      SELECT $1::int, e, d::jsonb, t
-                       FROM unnest($2::text[], $3::text[], $4::text[]) AS x(e, d, t)`,
+                       FROM unnest($2::text[], $3::text[], $4::text[]) WITH ORDINALITY AS x(e, d, t, n)
+                      ORDER BY n`,
                     [id, chunk.map((r) => r.email), chunk.map((r) => JSON.stringify(r.data)), chunk.map(() => newToken())]
                 );
             }
@@ -867,7 +871,9 @@ const start = async (req, res) => {
         });
         res.json({
             status: 'success',
-            message: scheduledAt ? 'Campaign scheduled.' : `Sending to ${stats.pending} recipient(s) has started.`
+            message: scheduledAt
+                ? 'Campaign scheduled.'
+                : `Sending to ${stats.pending} recipient(s) has started — ${campaignPace.describe()} from this mailbox.`
         });
     } catch (error) {
         handleServerError(res, error, 'campaign.start');

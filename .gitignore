@@ -42,3 +42,6 @@ Thumbs.db
 # Local database dumps
 *.sql.gz
 *.dump
+
+# Customer contact lists — personal data, never committed (the repo is public)
+CustomerFiles/

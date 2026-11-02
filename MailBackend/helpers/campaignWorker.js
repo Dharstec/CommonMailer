@@ -3,7 +3,9 @@
  *
  * Runs inside the API process — pm2 runs exactly one (ecosystem.config.js) —
  * and ticks once a second. All of its state lives in the database: the queue
- * is campaign_recipients.status and the throttle is campaigns.next_send_at. A
+ * is campaign_recipients.status, each campaign's next turn is
+ * campaigns.next_send_at, and how fast a mailbox may send at all is its pace
+ * (helpers/campaignPace.js) — shared by every campaign of that customer. A
  * restart or deploy therefore resumes every campaign where it stopped, and
  * pausing from the panel is just a status change the next tick respects.
  *
@@ -15,11 +17,12 @@ const mailer = require('./mailer');
 const { renderCampaign, mailAttachments } = require('./campaignRender');
 const { campaignLinks } = require('./links');
 const { explainSmtpError } = require('./smtpErrors');
+const pace = require('./campaignPace');
 const logger = require('./logger');
 
 const TICK_MS = 1000;
-const BACKOFF_MINUTES = [1, 2, 5, 10, 15];
-const FAILURE_STREAK_LIMIT = 10;
+const BACKOFF_MINUTES = [5, 10, 15, 30, 60];
+const FAILURE_STREAK_LIMIT = 3;
 
 const INTERRUPTED = 'The server restarted while this message was being sent, so it may or may not have '
     + 'been delivered. Retry it only if you are sure it did not arrive.';
@@ -29,6 +32,7 @@ const STALLED = 'The mail server stopped answering partway through this message,
 
 let timer = null;
 let ticking = false;
+// Customers with a message on its way: one at a time per mailbox.
 const inFlight = new Set();
 
 // campaign_id -> { signature, files }. Attachments are read once per campaign
@@ -104,16 +108,23 @@ async function pause(campaignId, reason) {
     logger.warn('Campaign paused automatically', { campaignId, reason });
 }
 
-function secondsBetween(campaign) {
-    return 60 / Math.min(60, Math.max(1, Number(campaign.rate_per_minute) || 20));
-}
-
+/** After a message, this campaign's next turn is when the mailbox's gap is over. */
 async function scheduleNext(campaign) {
     await POSTGRESQLService.PostgresAny(
         `UPDATE campaigns
             SET next_send_at = now() + make_interval(secs => $2::double precision), retry_count = 0, status_reason = NULL
           WHERE id = $1 AND status = 'sending'`,
-        [campaign.id, secondsBetween(campaign)]
+        [campaign.id, pace.GAP_SECONDS]
+    );
+}
+
+/** The mailbox is resting — the gap, or the daily limit: come back when it may send. */
+async function waitForMailbox(campaign) {
+    await POSTGRESQLService.PostgresAny(
+        `UPDATE campaigns c SET next_send_at = p.next_send_at
+           FROM campaign_pace p
+          WHERE c.id = $1 AND c.status = 'sending' AND p.tenant_id = c.tenant_id`,
+        [campaign.id]
     );
 }
 
@@ -128,8 +139,9 @@ async function handleFailure(campaign, recipient, error) {
             [recipient.id, kind === 'stalled' ? STALLED : message]
         );
 
-        // Ten different addresses in a row all "bad" is really one problem —
-        // the account or the message — and pressing on only burns the list.
+        // Several different addresses in a row all "bad" is really one problem —
+        // the list, the account or the message — and pressing on only burns
+        // the domain's reputation.
         const recent = await POSTGRESQLService.PostgresAny(
             `SELECT status FROM campaign_recipients
               WHERE campaign_id = $1 AND status IN ('sent', 'failed')
@@ -138,7 +150,7 @@ async function handleFailure(campaign, recipient, error) {
         );
         if (recent.length === FAILURE_STREAK_LIMIT && recent.every((r) => r.status === 'failed')) {
             await pause(campaign.id, `The last ${FAILURE_STREAK_LIMIT} messages all failed, so sending was paused to `
-                + 'protect the account. Check the errors in the report before resuming.');
+                + 'protect your domain. Check the errors in the report before resuming.');
         } else {
             await scheduleNext(campaign);
         }
@@ -152,15 +164,16 @@ async function handleFailure(campaign, recipient, error) {
     );
 
     if (kind === 'temporary' && campaign.retry_count < BACKOFF_MINUTES.length) {
-        const minutes = BACKOFF_MINUTES[campaign.retry_count];
+        // A retry is another email as far as the mailbox goes: never sooner than the gap.
+        const seconds = Math.max(BACKOFF_MINUTES[campaign.retry_count] * 60, pace.GAP_SECONDS);
         const firstLine = message.split('\n')[0];
         await POSTGRESQLService.PostgresAny(
             `UPDATE campaigns
                 SET retry_count = retry_count + 1,
-                    next_send_at = now() + make_interval(mins => $2),
+                    next_send_at = now() + make_interval(secs => $2::double precision),
                     status_reason = $3
               WHERE id = $1 AND status = 'sending'`,
-            [campaign.id, minutes, `The mail server did not accept the message just now (${firstLine}). Retrying automatically.`]
+            [campaign.id, seconds, `The mail server did not accept the message just now (${firstLine}). Retrying automatically.`]
         );
         return;
     }
@@ -169,29 +182,46 @@ async function handleFailure(campaign, recipient, error) {
 }
 
 /**
- * At most one message per call. The throttle is the time between calls, kept
- * in next_send_at; this function only decides whether there is anything to do.
+ * At most one message per call, and only when the mailbox's pace allows it.
+ * The slot is claimed first and the daily count read while holding it, so two
+ * campaigns of one customer can never both squeeze in under the limit. If
+ * anything below throws, the slot stays held and frees itself after a while —
+ * the safe way round when it is unclear whether a message left.
  */
 async function sendNext(campaign) {
-    // Daily cap over a rolling 24 hours: when it is reached, wait until the
-    // oldest message in the window ages out, then carry on by itself.
-    if (campaign.daily_limit > 0) {
-        const window = await POSTGRESQLService.PostgresAny(
-            `SELECT count(*)::int AS total, min(attempted_at) AS oldest
-               FROM campaign_recipients
-              WHERE campaign_id = $1 AND status IN ('sent', 'failed')
-                AND attempted_at > now() - interval '24 hours'`,
-            [campaign.id]
+    if (!await pace.claim(campaign.tenant_id)) {
+        await waitForMailbox(campaign);
+        return;
+    }
+    const rest = await sendOne(campaign);
+    await pace.release(campaign.tenant_id, rest);
+}
+
+/** Sends the next message of the queue. Returns how many seconds the mailbox rests afterwards. */
+async function sendOne(campaign) {
+    const done = await POSTGRESQLService.PostgresAny(
+        `UPDATE campaigns
+            SET status = 'completed', completed_at = now(), next_send_at = NULL, status_reason = NULL, updated_at = now()
+          WHERE id = $1 AND status = 'sending'
+            AND NOT EXISTS (SELECT 1 FROM campaign_recipients WHERE campaign_id = $1 AND status IN ('pending', 'sending'))
+        RETURNING id`,
+        [campaign.id]
+    );
+    if (done.length) {
+        attachmentCache.delete(campaign.id);
+        logger.info('Campaign completed', { campaignId: campaign.id });
+        return 0;
+    }
+
+    // Today's share is used up: wait, then carry on by itself.
+    const wait = await pace.dailyWait(campaign.tenant_id);
+    if (wait) {
+        await POSTGRESQLService.PostgresAny(
+            `UPDATE campaigns SET next_send_at = now() + make_interval(secs => $2::double precision)
+              WHERE id = $1 AND status = 'sending'`,
+            [campaign.id, wait]
         );
-        if (window[0].total >= campaign.daily_limit) {
-            await POSTGRESQLService.PostgresAny(
-                `UPDATE campaigns
-                    SET next_send_at = $2::timestamptz + interval '24 hours 5 seconds', status_reason = $3
-                  WHERE id = $1 AND status = 'sending'`,
-                [campaign.id, window[0].oldest, `Daily limit of ${campaign.daily_limit} reached. Sending continues by itself.`]
-            );
-            return;
-        }
+        return wait;
     }
 
     const claimed = await POSTGRESQLService.PostgresAny(
@@ -207,22 +237,7 @@ async function sendNext(campaign) {
         [campaign.id]
     );
     const recipient = claimed[0];
-
-    if (!recipient) {
-        const done = await POSTGRESQLService.PostgresAny(
-            `UPDATE campaigns
-                SET status = 'completed', completed_at = now(), next_send_at = NULL, status_reason = NULL, updated_at = now()
-              WHERE id = $1 AND status = 'sending'
-                AND NOT EXISTS (SELECT 1 FROM campaign_recipients WHERE campaign_id = $1 AND status IN ('pending', 'sending'))
-            RETURNING id`,
-            [campaign.id]
-        );
-        if (done.length) {
-            attachmentCache.delete(campaign.id);
-            logger.info('Campaign completed', { campaignId: campaign.id });
-        }
-        return;
-    }
+    if (!recipient) return 0;
 
     // Checked again here, not only at upload: they may have unsubscribed from
     // another campaign of the same customer since the list went in.
@@ -235,8 +250,10 @@ async function sendNext(campaign) {
             `UPDATE campaign_recipients SET status = 'skipped', error = 'Unsubscribed' WHERE id = $1`,
             [recipient.id]
         );
-        return;
+        return 0;
     }
+
+    await pace.record(campaign.tenant_id, campaign.id);
 
     let info;
     try {
@@ -271,7 +288,7 @@ async function sendNext(campaign) {
         });
     } catch (error) {
         await handleFailure(campaign, recipient, error);
-        return;
+        return pace.GAP_SECONDS;
     }
 
     await POSTGRESQLService.PostgresAny(
@@ -279,6 +296,7 @@ async function sendNext(campaign) {
         [recipient.id, info.messageId]
     );
     await scheduleNext(campaign);
+    return pace.GAP_SECONDS;
 }
 
 async function tick() {
@@ -303,16 +321,17 @@ async function tick() {
             []
         );
 
-        // Campaigns run side by side — one slow message must not hold up
-        // another customer's campaign — but each one sends strictly in order.
+        // Customers send side by side — one slow message must not hold up
+        // another customer — but each mailbox has one message on its way at a
+        // time, and its other campaigns wait their turn.
         for (const campaign of due) {
-            if (inFlight.has(campaign.id)) continue;
-            inFlight.add(campaign.id);
+            if (inFlight.has(campaign.tenant_id)) continue;
+            inFlight.add(campaign.tenant_id);
             sendNext(campaign)
                 .catch((err) => logger.error('Campaign send step failed', {
                     campaignId: campaign.id, error: err.message, stack: err.stack
                 }))
-                .finally(() => inFlight.delete(campaign.id));
+                .finally(() => inFlight.delete(campaign.tenant_id));
         }
     } catch (err) {
         logger.error('Campaign worker tick failed', { error: err.message });
