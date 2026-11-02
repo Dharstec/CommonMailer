@@ -438,7 +438,14 @@ signature and footer.
 
 Every design is table-based with inline styles (Gmail, Outlook, Apple Mail,
 phones), adapts its text colours to the brand colour, names the attachments in
-the body, and is sent with a plain-text part. The message box understands
+the body, and is sent with a plain-text part.
+
+The logo and banner can be uploaded straight from your computer with **Upload**
+— no website needed. The panel makes the picture email-ready first (an SVG
+becomes a PNG, a WebP a PNG or JPG, anything wider than 1200 px is scaled
+down), and the API serves it at `/api/c/img/…` with a link that never changes,
+so emails already sent keep their pictures. Pasting a link of your own still
+works too. The message box understands
 `**bold**`, `- lists`, `1. lists`, `## headings`, `[links](https://…)` and `---`.
 
 ### Attachments

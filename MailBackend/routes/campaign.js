@@ -25,11 +25,13 @@ function rawBody(limit, tooLarge) {
 
 const listUpload = rawBody('5mb', 'The list is larger than 5 MB. Split it into smaller files.');
 const fileUpload = rawBody('15mb', 'Attachments are limited to 15 MB per email.');
+const imageUpload = rawBody('5mb', 'Pictures are limited to 5 MB.');
 
 // Public: opened from inside a recipient's mail client. No login — the token is the key.
 router.get('/c/:token/unsubscribe', campaignPublic.unsubscribePage);
 router.post('/c/:token/unsubscribe', campaignPublic.unsubscribe);
 router.get('/c/:token/open.gif', campaignPublic.openPixel);
+router.get('/c/img/:file', campaignPublic.image);
 
 router.get('/campaigns', verifyToken, campaign.getAll);
 router.post('/campaigns', verifyToken, validate(campaignSchema), campaign.create);
@@ -51,6 +53,7 @@ router.delete('/campaigns/:id/recipients', verifyToken, campaign.clearRecipients
 
 router.post('/campaigns/:id/attachments', verifyToken, fileUpload, campaign.uploadAttachment);
 router.delete('/campaigns/:id/attachments/:attachmentId', verifyToken, campaign.removeAttachment);
+router.post('/campaigns/:id/images', verifyToken, imageUpload, campaign.uploadImage);
 
 router.post('/campaigns/:id/preview', verifyToken, validate(campaignPreviewSchema), campaign.preview);
 router.post('/campaigns/:id/test', verifyToken, validate(campaignPreviewSchema), campaign.sendTest);

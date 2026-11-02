@@ -31,9 +31,9 @@ const ADMIN_ORIGINS = (process.env.FRONTEND_ORIGIN || '').split(',').map((o) => 
  * therefore the allowlist) is actually known. A disallowed site gets a clean
  * 403 from the handler rather than an opaque CORS failure.
  *
- * Campaign unsubscribe links and the open pixel (/api/c/) are opened from
- * inside a mail client, never fetched by script from another site, so they get
- * no CORS headers at all. They still must not be refused for carrying an
+ * Campaign unsubscribe links, the open pixel and campaign pictures (/api/c/)
+ * are opened from inside a mail client, never fetched by script from another
+ * site, so they get no CORS headers at all. They still must not be refused for carrying an
  * Origin: the unsubscribe page's own button posts with this API's origin.
  */
 const corsOptionsDelegate = (req, callback) => {

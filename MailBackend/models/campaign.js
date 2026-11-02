@@ -35,6 +35,17 @@ const EDITABLE = ['draft', 'scheduled', 'paused'];
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
+/**
+ * Logo and banner uploads, recognised by their first bytes rather than by what
+ * the browser claims. Only what every inbox shows: the panel turns SVG and
+ * WebP into PNG or JPG before it uploads.
+ */
+const IMAGE_TYPES = [
+    { type: 'image/png', ext: 'png', magic: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+    { type: 'image/jpeg', ext: 'jpg', magic: Buffer.from([0xff, 0xd8, 0xff]) },
+    { type: 'image/gif', ext: 'gif', magic: Buffer.from('GIF8') }
+];
+
 /** Under nginx's 30 s proxy_read_timeout, with room to answer before it gives up. */
 const TEST_REPLY_WAIT_MS = 25 * 1000;
 
@@ -656,6 +667,47 @@ const removeAttachment = async (req, res) => {
     }
 };
 
+/**
+ * A logo or banner picture from the editor. Stored with the customer and served
+ * from this API, so the design's Logo / Banner field gets a working link without
+ * the picture being put on a website first.
+ */
+const uploadImage = async (req, res) => {
+    try {
+        const id = idParam(req.params.id);
+        const row = id && await loadCampaign(id);
+        if (!row) return notFound(res);
+
+        if (!EDITABLE.includes(row.status)) {
+            return res.status(409).json({
+                status: 'error',
+                message: 'Pictures cannot change while the campaign is sending or after it has finished.'
+            });
+        }
+        if (!Buffer.isBuffer(req.body) || !req.body.length) {
+            return res.status(400).json({ status: 'error', message: 'The picture is empty.' });
+        }
+
+        const kind = IMAGE_TYPES.find((t) => req.body.subarray(0, t.magic.length).equals(t.magic));
+        if (!kind) return res.status(400).json({ status: 'error', message: 'Use a PNG, JPG or GIF picture.' });
+
+        const token = newToken();
+        await POSTGRESQLService.PostgresAny(
+            `INSERT INTO campaign_images (tenant_id, campaign_id, token, content_type, size_bytes, content)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [row.tenant_id, id, token, kind.type, req.body.length, req.body]
+        );
+
+        logger.info('Campaign image uploaded', { id, type: kind.type, bytes: req.body.length, by: req.email });
+        res.status(201).json({
+            status: 'success',
+            data: { url: `${baseUrl()}/api/c/img/${token}.${kind.ext}`, content_type: kind.type, size_bytes: req.body.length }
+        });
+    } catch (error) {
+        handleServerError(res, error, 'campaign.uploadImage');
+    }
+};
+
 // ------------------------------------------------------- preview and test --
 
 /**
@@ -1050,7 +1102,7 @@ const removeUnsubscribe = async (req, res) => {
 module.exports = {
     getAll, getOne, create, update, remove, duplicate,
     uploadRecipients, listRecipients, exportRecipients, clearRecipients,
-    uploadAttachment, removeAttachment,
+    uploadAttachment, removeAttachment, uploadImage,
     preview, sendTest,
     start, pause, cancel, retryFailed,
     listUnsubscribes, addUnsubscribes, removeUnsubscribe

@@ -7,6 +7,7 @@
  *   POST /api/c/:token/unsubscribe   the actual unsubscribe (the page's button,
  *                                    and RFC 8058 one-click from Gmail/Yahoo)
  *   GET  /api/c/:token/open.gif      1x1 image that records the open
+ *   GET  /api/c/img/:token.:ext      a logo or banner uploaded in the editor
  *
  * The GET deliberately changes nothing. Corporate mail scanners (Defender Safe
  * Links, Mimecast, Proofpoint) fetch every link in a message before a person
@@ -183,4 +184,32 @@ const openPixel = async (req, res) => {
     res.end(PIXEL);
 };
 
-module.exports = { unsubscribePage, unsubscribe, openPixel };
+const IMAGE_FILE = /^([A-Za-z0-9_-]{16,64})\.(png|jpg|gif)$/;
+
+/**
+ * The pictures campaigns show. A token never points at another picture, so
+ * they can be cached for good — by browsers and by Gmail's image proxy.
+ */
+const image = async (req, res) => {
+    try {
+        const match = IMAGE_FILE.exec(String(req.params.file || ''));
+        const rows = match
+            ? await POSTGRESQLService.PostgresAny(
+                `SELECT content_type, content FROM campaign_images WHERE token = $1`, [match[1]]
+            )
+            : [];
+        if (!rows.length) return res.status(404).end();
+
+        res.setHeader('Content-Type', rows[0].content_type);
+        res.setHeader('Content-Length', rows[0].content.length);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        // helmet's default same-origin policy would stop webmail and the panel's preview showing it.
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.end(rows[0].content);
+    } catch (error) {
+        logger.error('Campaign image could not be served', { error: error.message });
+        res.status(500).end();
+    }
+};
+
+module.exports = { unsubscribePage, unsubscribe, openPixel, image };
