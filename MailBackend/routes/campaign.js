@@ -50,6 +50,7 @@ router.get('/campaigns/:id/recipients', verifyToken, campaign.listRecipients);
 router.get('/campaigns/:id/recipients/export', verifyToken, campaign.exportRecipients);
 router.post('/campaigns/:id/recipients', verifyToken, listUpload, campaign.uploadRecipients);
 router.delete('/campaigns/:id/recipients', verifyToken, campaign.clearRecipients);
+router.delete('/campaigns/:id/recipients/:recipientId', verifyToken, campaign.removeRecipient);
 
 router.post('/campaigns/:id/attachments', verifyToken, fileUpload, campaign.uploadAttachment);
 router.delete('/campaigns/:id/attachments/:attachmentId', verifyToken, campaign.removeAttachment);

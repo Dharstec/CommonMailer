@@ -512,6 +512,49 @@ const listRecipients = async (req, res) => {
     }
 };
 
+/**
+ * Takes one person off the list before their email goes out — also while the
+ * campaign is sending. Only rows that were never delivered: what went out
+ * stays in the report.
+ */
+const removeRecipient = async (req, res) => {
+    try {
+        const id = idParam(req.params.id);
+        const recipientId = idParam(req.params.recipientId);
+        const row = id && await loadCampaign(id);
+        if (!row) return notFound(res);
+
+        // Locks the row, so the sender cannot be handing it to the mail server at the same moment.
+        const removed = recipientId
+            ? await POSTGRESQLService.PostgresAny(
+                `DELETE FROM campaign_recipients
+                  WHERE id = $1 AND campaign_id = $2 AND status IN ('pending', 'failed')
+                RETURNING email`,
+                [recipientId, id]
+            )
+            : [];
+        if (!removed.length) {
+            const found = recipientId
+                ? await POSTGRESQLService.PostgresAny(
+                    `SELECT status FROM campaign_recipients WHERE id = $1 AND campaign_id = $2`, [recipientId, id]
+                )
+                : [];
+            if (!found.length) return res.status(404).json({ status: 'error', message: 'Recipient not found' });
+            return res.status(409).json({
+                status: 'error',
+                message: found[0].status === 'sending'
+                    ? 'Their email is being sent right now.'
+                    : 'Their email has already been sent or skipped, so they stay in the report.'
+            });
+        }
+
+        logger.info('Campaign recipient removed', { id, recipientId, by: req.email });
+        res.json({ status: 'success', message: `${removed[0].email} removed — they won't get this campaign.` });
+    } catch (error) {
+        handleServerError(res, error, 'campaign.removeRecipient');
+    }
+};
+
 /** Every row with its outcome, plus the original columns, for handing back to the customer. */
 const exportRecipients = async (req, res) => {
     try {
@@ -1101,7 +1144,7 @@ const removeUnsubscribe = async (req, res) => {
 
 module.exports = {
     getAll, getOne, create, update, remove, duplicate,
-    uploadRecipients, listRecipients, exportRecipients, clearRecipients,
+    uploadRecipients, listRecipients, exportRecipients, clearRecipients, removeRecipient,
     uploadAttachment, removeAttachment, uploadImage,
     preview, sendTest,
     start, pause, cancel, retryFailed,
