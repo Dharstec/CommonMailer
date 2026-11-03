@@ -466,8 +466,9 @@ Campaign emails go out slowly, on purpose: a young domain that suddenly sends a
 lot is exactly what spam filters look for.
 
 - **At least 5 minutes between two emails**, one at a time — never a burst.
-- **At most 10 emails in any 24 hours** from a customer's mailbox. The limit is
-  the mailbox's, shared by all of its campaigns, so two campaigns cannot double it.
+- **At most 10 emails a day** from a customer's mailbox — a calendar day, India
+  time (`CAMPAIGN_TIMEZONE`). The limit is the mailbox's, shared by all of its
+  campaigns, so two campaigns cannot double it.
 - **The rest wait in the queue** and go out by themselves on the following days
   — 37 recipients take about 4 days. Leave the campaign running; a restart or a
   deploy does not lose its place.
@@ -561,8 +562,8 @@ through the customer's own mailbox.
 Meta judges a number by how many people block or report it (its *quality
 rating*); a Low rating gets the number limited. So:
 
-- **A slow pace**: at least 2 minutes between messages, at most 20 in any 24
-  hours per number, the rest queued day by day — `WHATSAPP_GAP_MINUTES` and
+- **A slow pace**: at least 2 minutes between messages, at most 20 a day per
+  number, the rest queued day by day — `WHATSAPP_GAP_MINUTES` and
   `WHATSAPP_DAILY_LIMIT` in `MailBackend/.env`. Raise them only while the quality
   stays Green, never above Meta's own limit (250 a day for a new number).
 - **Sending hours**, as for email: by default 10:00–18:00, Monday to Saturday

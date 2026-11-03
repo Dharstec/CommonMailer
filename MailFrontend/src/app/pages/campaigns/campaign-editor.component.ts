@@ -47,7 +47,7 @@ const EMPTY_STATS: CampaignStats = {
 };
 
 /** Shown only until the server's own numbers arrive with the saved campaign; the server enforces its own. */
-const DEFAULT_PACE: CampaignPace = { gap_minutes: 5, daily_limit: 10, last_24h: 0 };
+const DEFAULT_PACE: CampaignPace = { gap_minutes: 5, daily_limit: 10, today: 0 };
 
 const DESIGNS: DesignOption[] = [
   {
@@ -963,7 +963,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
   /** The sending account's own address — the limit is that mailbox's, across all its campaigns. */
   get mailbox(): string { return this.sender?.from_email || this.tenant?.name || 'this mailbox'; }
 
-  get dayUsed(): boolean { return this.pace.last_24h >= this.pace.daily_limit; }
+  get dayUsed(): boolean { return this.pace.today >= this.pace.daily_limit; }
 
   /** "5 minutes" */
   get gapText(): string {
@@ -980,7 +980,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
   get estimate(): string {
     const n = this.stats.pending;
     if (!n) return '';
-    const { gap_minutes: gap, daily_limit: daily, last_24h: used } = this.pace;
+    const { gap_minutes: gap, daily_limit: daily, today: used } = this.pace;
     const today = Math.max(0, daily - used);
     if (n > today) {
       const days = Math.ceil((n - today) / daily) + (today ? 1 : 0);

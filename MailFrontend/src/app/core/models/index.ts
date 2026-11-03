@@ -225,8 +225,8 @@ export interface CampaignSender {
 export interface CampaignPace {
   gap_minutes: number;
   daily_limit: number;
-  /** Campaign emails this mailbox handed to its server in the last 24 hours. */
-  last_24h: number;
+  /** Messages this sender handed over so far today (its calendar day). */
+  today: number;
 }
 
 /** Sending hours: days 0 = Sunday, times on the zone's own clock. null sends at any time. */

@@ -365,6 +365,12 @@ async function start() {
         [INTERRUPTED]
     );
     if (interrupted.length) logger.warn('Campaign messages interrupted by a restart', { count: interrupted.length });
+    // The rules for the next turn may have changed with this version (pace, hours):
+    // a campaign that is only waiting works its next turn out again at once. The
+    // gap and the daily limit are checked as always; retries keep their back-off.
+    await POSTGRESQLService.PostgresAny(
+        `UPDATE campaigns SET next_send_at = now() WHERE status = 'sending' AND retry_count = 0 AND next_send_at > now()`, []
+    );
     timer = setInterval(tick, TICK_MS);
 }
 

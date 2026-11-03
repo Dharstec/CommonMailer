@@ -3,7 +3,7 @@
  * (helpers/campaignWorker.js), with the number's own pace:
  *
  *   WHATSAPP_GAP_MINUTES   at least this long between two messages   (default 2)
- *   WHATSAPP_DAILY_LIMIT   at most this many in any 24 hours         (default 20)
+ *   WHATSAPP_DAILY_LIMIT   at most this many a day (CAMPAIGN_TIMEZONE)  (default 20)
  *
  * A number's quality rating is what Meta judges it by: people who block or
  * report a business lower it, and a Low rating gets the number limited. So the
@@ -286,6 +286,12 @@ async function start() {
         [INTERRUPTED]
     );
     if (interrupted.length) logger.warn('WhatsApp messages interrupted by a restart', { count: interrupted.length });
+    // The rules for the next turn may have changed with this version (pace, hours):
+    // a campaign that is only waiting works its next turn out again at once. The
+    // gap and the daily limit are checked as always; retries keep their back-off.
+    await POSTGRESQLService.PostgresAny(
+        `UPDATE wa_campaigns SET next_send_at = now() WHERE status = 'sending' AND retry_count = 0 AND next_send_at > now()`, []
+    );
     timer = setInterval(tick, TICK_MS);
 }
 

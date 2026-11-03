@@ -313,7 +313,7 @@
       <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900">
         <p class="font-semibold">Safe pace for this number</p>
         <p class="mt-1">{{ paceSentence }} — the rest wait and go out by themselves, day after day.</p>
-        <p class="mt-1 text-xs text-emerald-700">Last 24 hours: {{ campaign.pace?.last_24h || 0 }} of {{ campaign.pace?.daily_limit || 0 }} used.</p>
+        <p class="mt-1 text-xs text-emerald-700">Today: {{ campaign.pace?.today || 0 }} of {{ campaign.pace?.daily_limit || 0 }} used.</p>
         <p *ngIf="estimate" class="mt-2">{{ stats.pending | number }} contact(s) will take <strong>{{ estimate }}</strong>.</p>
       </div>
 
@@ -370,7 +370,7 @@
     <div *ngIf="campaign.status_reason" class="rounded-lg px-4 py-3 text-sm whitespace-pre-line border"
          [ngClass]="campaign.status === 'paused' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-sky-50 border-sky-200 text-sky-900'">{{ campaign.status_reason }}</div>
     <div *ngIf="campaign.status === 'sending'" class="rounded-lg px-4 py-3 text-sm border bg-emerald-50 border-emerald-200 text-emerald-900">
-      Last 24 hours: {{ campaign.pace?.last_24h || 0 }} of {{ campaign.pace?.daily_limit || 0 }} messages from this number.
+      Today: {{ campaign.pace?.today || 0 }} of {{ campaign.pace?.daily_limit || 0 }} messages from this number.
       <ng-container *ngIf="campaign.next_send_at"> Next message {{ campaign.next_send_at | date:'EEE d MMM, h:mm a' }}.</ng-container>
     </div>
 

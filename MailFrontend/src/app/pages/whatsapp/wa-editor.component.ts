@@ -689,7 +689,7 @@ export class WaEditorComponent implements OnInit, OnDestroy {
     const n = this.stats.pending;
     const p = this.campaign.pace;
     if (!n || !p) return '';
-    const today = Math.max(0, p.daily_limit - p.last_24h);
+    const today = Math.max(0, p.daily_limit - p.today);
     if (n > today) {
       const days = Math.ceil((n - today) / p.daily_limit) + (today ? 1 : 0);
       return days === 1 ? 'about a day' : `about ${days} days`;

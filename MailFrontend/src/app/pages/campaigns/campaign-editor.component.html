@@ -734,7 +734,7 @@
                 <li>The rest wait in the queue and go out by themselves, day after day.</li>
               </ul>
               <p class="mt-2 text-xs text-emerald-700">
-                Last 24 hours: {{ pace.last_24h | number }} of {{ pace.daily_limit | number }} used.
+                Today: {{ pace.today | number }} of {{ pace.daily_limit | number }} used.
               </p>
             </div>
             <app-send-window [(value)]="campaign.send_window" (valueChange)="changed()" [disabled]="!canEditContent"></app-send-window>
@@ -862,7 +862,7 @@
           The {{ pace.daily_limit | number }} emails for today have gone out from {{ mailbox }}. The rest wait in the queue and go out by themselves.
         </ng-container>
         <ng-template #underLimit>
-          Last 24 hours: {{ pace.last_24h | number }} of {{ pace.daily_limit | number }} emails from {{ mailbox }}.
+          Today: {{ pace.today | number }} of {{ pace.daily_limit | number }} emails from {{ mailbox }}.
         </ng-template>
         <ng-container *ngIf="campaign.next_send_at"> Next email {{ campaign.next_send_at | date:'EEE d MMM, h:mm a' }}.</ng-container>
       </div>

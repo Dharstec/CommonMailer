@@ -8,15 +8,20 @@
  * (campaign_send_log), and the numbers are set on the server, not in the panel:
  *
  *   CAMPAIGN_GAP_MINUTES   at least this long between two emails    (default 5)
- *   CAMPAIGN_DAILY_LIMIT   at most this many in any 24 hours        (default 10)
+ *   CAMPAIGN_DAILY_LIMIT   at most this many a day                  (default 10)
+ *   CAMPAIGN_TIMEZONE      whose calendar "a day" is      (default Asia/Kolkata)
  *
- * Every email handed to the mail server counts, whatever it answered. Whatever
- * the limit leaves over waits in the queue and goes out on the following days.
+ * A day is a calendar day on that clock, midnight to midnight — what people
+ * mean by "10 a day": yesterday evening's emails do not hold back this
+ * morning's. Every email handed to the mail server counts, whatever it
+ * answered. Whatever the limit leaves over waits in the queue and goes out on
+ * the following days.
  *
  * WhatsApp campaigns get the same machinery with their own tables and numbers
  * (helpers/whatsappWorker.js), through createPace().
  */
 const POSTGRESQLService = require('./POSTGRES');
+const { validZone } = require('./sendWindow');
 
 function setting(value, fallback) {
     const n = Number(value);
@@ -25,6 +30,12 @@ function setting(value, fallback) {
 
 /** Longer than any one message can take. A slot held by a process that died frees itself after this. */
 const HOLD = '30 minutes';
+
+const DAY_ZONE = validZone(process.env.CAMPAIGN_TIMEZONE || '') ? process.env.CAMPAIGN_TIMEZONE : 'Asia/Kolkata';
+
+/** Midnight today and tomorrow on DAY_ZONE's calendar, as SQL (the zone is $2). */
+const TODAY = `(date_trunc('day', now() AT TIME ZONE $2) AT TIME ZONE $2)`;
+const TOMORROW = `((date_trunc('day', now() AT TIME ZONE $2) + interval '1 day') AT TIME ZONE $2)`;
 
 /**
  * One channel's pace. The table names are fixed strings from this codebase,
@@ -64,32 +75,28 @@ function createPace({ paceTable, logTable, gapSeconds, dailyLimit, noun }) {
         );
     }
 
-    /**
-     * Seconds until the sender is under its daily limit again; 0 when it is
-     * already. Over a rolling 24 hours, so no two calendar days can be stacked
-     * back to back: the window frees up once its dailyLimit-th newest message
-     * is a day old.
-     */
-    async function dailyWait(tenantId) {
+    /** Messages so far today, and the seconds to the next midnight. */
+    async function today(tenantId) {
         const rows = await POSTGRESQLService.PostgresAny(
-            `SELECT extract(epoch FROM attempted_at + interval '24 hours 5 seconds' - now()) AS wait
-               FROM (SELECT attempted_at, row_number() OVER (ORDER BY attempted_at DESC) AS newest
-                       FROM ${logTable}
-                      WHERE tenant_id = $1 AND attempted_at > now() - interval '24 hours') w
-              WHERE newest = $2`,
-            [tenantId, dailyLimit]
+            `SELECT count(*)::int AS used,
+                    extract(epoch FROM ${TOMORROW} - now()) + 5 AS until_tomorrow
+               FROM ${logTable}
+              WHERE tenant_id = $1 AND attempted_at >= ${TODAY}`,
+            [tenantId, DAY_ZONE]
         );
-        return rows.length ? Math.max(1, Number(rows[0].wait)) : 0;
+        return { used: rows[0].used, untilTomorrow: Number(rows[0].until_tomorrow) };
     }
 
-    /** For the panel: the limits, and how much of the last 24 hours the sender has used. */
+    /** Seconds until tomorrow once today's share is used up; 0 while some is left. */
+    async function dailyWait(tenantId) {
+        const { used, untilTomorrow } = await today(tenantId);
+        return used >= dailyLimit ? Math.max(1, untilTomorrow) : 0;
+    }
+
+    /** For the panel: the limits, and how much of today the sender has used. */
     async function status(tenantId) {
-        const rows = await POSTGRESQLService.PostgresAny(
-            `SELECT count(*)::int AS used FROM ${logTable}
-              WHERE tenant_id = $1 AND attempted_at > now() - interval '24 hours'`,
-            [tenantId]
-        );
-        return { gap_minutes: gapSeconds / 60, daily_limit: dailyLimit, last_24h: rows[0].used };
+        const { used } = await today(tenantId);
+        return { gap_minutes: gapSeconds / 60, daily_limit: dailyLimit, today: used };
     }
 
     /** "one email every 5 minutes, at most 10 a day" */
