@@ -182,7 +182,9 @@ async function sendOne(campaign) {
             `UPDATE wa_campaigns SET next_send_at = $2 WHERE id = $1 AND status = 'sending'`,
             [campaign.id, turnAfter(campaign, wait)]
         );
-        return wait;
+        // The number's slot is not held for this: the count is read afresh every
+        // turn, so tomorrow — or a change of rule — needs nothing undone.
+        return 0;
     }
     if (!await qualityAllows(campaign, account)) return 0;
 
@@ -286,6 +288,14 @@ async function start() {
         [INTERRUPTED]
     );
     if (interrupted.length) logger.warn('WhatsApp messages interrupted by a restart', { count: interrupted.length });
+    // A slot held for longer than one gap is left over from an older rule (the
+    // daily limit used to hold it until the next day): nothing is in flight at
+    // boot, so one gap from now is all it may still ask for.
+    await POSTGRESQLService.PostgresAny(
+        `UPDATE wa_pace SET next_send_at = now() + make_interval(secs => $1::double precision), updated_at = now()
+          WHERE next_send_at > now() + make_interval(secs => $1::double precision)`,
+        [pace.GAP_SECONDS]
+    );
     // The rules for the next turn may have changed with this version (pace, hours):
     // a campaign that is only waiting works its next turn out again at once. The
     // gap and the daily limit are checked as always; retries keep their back-off.
