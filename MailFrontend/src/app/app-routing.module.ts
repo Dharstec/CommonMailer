@@ -31,6 +31,10 @@ const routes: Routes = [
         path: 'campaigns',
         loadChildren: () => import('./pages/campaigns/campaigns.module').then((m) => m.CampaignsModule)
       },
+      {
+        path: 'whatsapp',
+        loadChildren: () => import('./pages/whatsapp/whatsapp.module').then((m) => m.WhatsappModule)
+      },
       { path: 'change-password', component: ChangePasswordComponent }
     ]
   },

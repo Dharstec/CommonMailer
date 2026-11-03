@@ -1,5 +1,6 @@
 /**
- * Turns an uploaded recipient list into rows a campaign can send to.
+ * Turns an uploaded recipient list into rows a campaign can send to — keyed by
+ * email for email campaigns, by mobile number for WhatsApp ones.
  *
  * Built for what people actually export, not for a tidy spec:
  *   - Excel "CSV UTF-8" (has a BOM), plain "CSV" (Windows-1252) and
@@ -13,6 +14,7 @@
  * the caller decides what to do with addresses that have unsubscribed.
  */
 const Joi = require('joi');
+const { normalisePhone } = require('./phone');
 
 const MAX_ROWS = 20000;
 const MAX_REPORTED_INVALID = 200;
@@ -49,6 +51,10 @@ const DOMAIN_TYPOS = {
     'redifmail.com': 'rediffmail.com', 'rediffmai.com': 'rediffmail.com', 'rediffmial.com': 'rediffmail.com'
 };
 const TLD_TYPO = /\.(con|cmo|ocm|vom|xom|comm|coom)$/;
+
+/** Header spellings for the number column of a WhatsApp list. */
+const PHONE_SPELLINGS = ['phone', 'phone_number', 'phone_no', 'mobile', 'mobile_number', 'mobile_no', 'mob', 'mob_no',
+    'whatsapp', 'whatsapp_number', 'whatsapp_no', 'contact_no', 'contact_number', 'cell', 'cell_no', 'number'];
 
 /** Courtesy titles that are not a first name: "Dr. Priya Raman" greets Priya. */
 const HONORIFIC = /^(mr|mrs|ms|miss|mx|dr|prof|shri|smt|sri|thiru|thirumathi|er|adv)\.?$/i;
@@ -172,12 +178,15 @@ function firstNameFrom(fullName) {
 }
 
 /**
+ * One list, keyed by the column `spec` describes: its header spellings, how a
+ * cell becomes the key (or why it cannot), and what to say when no column fits.
+ *
  * @param {Buffer} buffer  the uploaded file, as bytes
- * @returns {{ rows: {email, data}[], columns: string[], total_rows: number,
+ * @returns {{ rows: {[key]: string, data}[], columns: string[], total_rows: number,
  *             invalid: {row, value, reason}[], invalid_count: number,
  *             duplicates: number, error?: string }}
  */
-function parseRecipients(buffer) {
+function parseList(buffer, spec) {
     const empty = { rows: [], columns: [], total_rows: 0, invalid: [], invalid_count: 0, duplicates: 0 };
 
     const text = decode(buffer);
@@ -186,24 +195,18 @@ function parseRecipients(buffer) {
 
     const taken = new Set();
     const headerKeys = table[0].map((h, i) => normaliseKey(h, i, taken));
-    let emailIndex = headerKeys.findIndex((k) => ALIASES.email.includes(k));
+    let keyIndex = headerKeys.findIndex((k) => spec.spellings.includes(k));
     let keys = headerKeys;
     let dataRows = table.slice(1);
     let firstLine = 2;
 
-    // No email header: accept a bare list, as long as the first line already
-    // holds an address — that is a headerless file, not a mislabelled one.
-    if (emailIndex === -1) {
-        emailIndex = table[0].findIndex((cell) => isEmail(cleanEmail(cell)));
-        if (emailIndex === -1) {
-            return {
-                ...empty,
-                error: 'No email column found. Add a header row with a column named "email" '
-                    + '(E-mail, Email ID and Email Address also work), or upload one address per line.'
-            };
-        }
+    // No header for the key column: accept a bare list, as long as the first
+    // line already holds a value — that is a headerless file, not a mislabelled one.
+    if (keyIndex === -1) {
+        keyIndex = table[0].findIndex((cell) => spec.looksLike(cell));
+        if (keyIndex === -1) return { ...empty, error: spec.missing };
         const plain = new Set();
-        keys = table[0].map((_, i) => (i === emailIndex ? 'email' : normaliseKey('', i, plain)));
+        keys = table[0].map((_, i) => (i === keyIndex ? spec.key : normaliseKey('', i, plain)));
         dataRows = table;
         firstLine = 1;
     }
@@ -222,7 +225,7 @@ function parseRecipients(buffer) {
     let invalidCount = 0;
     let duplicates = 0;
     const seen = new Set();
-    const columns = new Set(['email']);
+    const columns = new Set([spec.key]);
 
     const reject = (row, value, reason) => {
         invalidCount += 1;
@@ -238,37 +241,34 @@ function parseRecipients(buffer) {
         });
 
         for (const [canonical, spellings] of Object.entries(ALIASES)) {
-            if (canonical === 'email' || data[canonical]) continue;
+            if (canonical === spec.key || data[canonical]) continue;
             const from = spellings.find((k) => data[k]);
             if (from) data[canonical] = data[from];
         }
 
-        const raw = cells[emailIndex] === undefined ? '' : cells[emailIndex];
-        const email = cleanEmail(raw);
-        if (!email) return reject(line, '', 'Email is empty');
-        if (!isEmail(email)) return reject(line, raw, 'Not a valid email address');
+        const raw = cells[keyIndex] === undefined ? '' : cells[keyIndex];
+        const read = spec.read(raw);
+        if (read.reason) return reject(line, raw, read.reason);
+        const value = read.value;
 
-        const typo = typoSuggestion(email);
-        if (typo) return reject(line, raw, `Looks like a typo — did you mean ${typo}?`);
-
-        if (seen.has(email)) {
+        if (seen.has(value)) {
             duplicates += 1;
             return undefined;
         }
-        seen.add(email);
+        seen.add(value);
 
-        // Keep the address under its canonical key only; the original header
-        // ("Email ID") would just repeat it.
-        keys.forEach((key, c) => { if (c === emailIndex) delete data[key]; });
-        data.email = email;
+        // Keep the value under its canonical key only; the original header
+        // ("Email ID", "Mobile No") would just repeat it.
+        keys.forEach((key, c) => { if (c === keyIndex) delete data[key]; });
+        data[spec.key] = value;
         if (!data.first_name && data.name) data.first_name = firstNameFrom(data.name);
 
         Object.keys(data).forEach((k) => columns.add(k));
-        rows.push({ email, data });
+        rows.push({ [spec.key]: value, data });
         return undefined;
     });
 
-    const preferred = ['email', 'first_name', 'last_name', 'name', 'company'];
+    const preferred = [spec.key, 'first_name', 'last_name', 'name', 'company'];
     const ordered = [
         ...preferred.filter((k) => columns.has(k)),
         ...[...columns].filter((k) => !preferred.includes(k))
@@ -284,4 +284,40 @@ function parseRecipients(buffer) {
     };
 }
 
-module.exports = { parseRecipients, isEmail, cleanEmail, MAX_ROWS };
+const EMAIL_LIST = {
+    key: 'email',
+    spellings: ALIASES.email,
+    looksLike: (cell) => isEmail(cleanEmail(cell)),
+    read(raw) {
+        const email = cleanEmail(raw);
+        if (!email) return { reason: 'Email is empty' };
+        if (!isEmail(email)) return { reason: 'Not a valid email address' };
+        const typo = typoSuggestion(email);
+        if (typo) return { reason: `Looks like a typo — did you mean ${typo}?` };
+        return { value: email };
+    },
+    missing: 'No email column found. Add a header row with a column named "email" '
+        + '(E-mail, Email ID and Email Address also work), or upload one address per line.'
+};
+
+/** An email campaign's list: one row per address. */
+function parseRecipients(buffer) {
+    return parseList(buffer, EMAIL_LIST);
+}
+
+/** A WhatsApp campaign's list: one row per mobile number, with its country code. */
+function parsePhoneList(buffer, defaultCountry) {
+    return parseList(buffer, {
+        key: 'phone',
+        spellings: PHONE_SPELLINGS,
+        looksLike: (cell) => Boolean(normalisePhone(cell, defaultCountry).phone),
+        read(raw) {
+            const result = normalisePhone(raw, defaultCountry);
+            return result.phone ? { value: result.phone } : { reason: result.reason };
+        },
+        missing: 'No phone column found. Add a header row with a column named "phone" '
+            + '(Mobile, WhatsApp and Contact No also work), or upload one number per line.'
+    });
+}
+
+module.exports = { parseRecipients, parsePhoneList, isEmail, cleanEmail, MAX_ROWS };

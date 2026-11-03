@@ -1,0 +1,209 @@
+<div class="max-w-7xl mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">WhatsApp campaigns</h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Approved WhatsApp messages to a whole list, from your own business number — through Meta's official API.
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" class="btn-ghost" (click)="openList()">Do-not-message list</button>
+      <a routerLink="/whatsapp/setup" class="btn-ghost">WhatsApp setup</a>
+      <a routerLink="/whatsapp/new" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" *ngIf="connected.length">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        New campaign
+      </a>
+    </div>
+  </div>
+
+  <!-- Connected numbers at a glance -->
+  <div *ngIf="connected.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <a *ngFor="let a of connected" [routerLink]="['/whatsapp/setup']" [queryParams]="{ tenant: a.tenant_id }"
+       class="card card-body flex items-center gap-3 hover:border-emerald-300 transition">
+      <span class="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.87 9.87 0 004.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2zm5.8 14.14c-.24.68-1.41 1.3-1.95 1.38-.5.08-1.13.11-1.82-.11-.42-.13-.96-.31-1.65-.61-2.9-1.25-4.8-4.17-4.94-4.36-.14-.19-1.18-1.57-1.18-3s.75-2.13 1.02-2.42c.27-.29.58-.36.78-.36h.56c.18 0 .42-.07.66.5.24.58.82 2 .89 2.15.07.14.12.31.02.5-.1.19-.14.31-.29.48-.14.17-.3.37-.43.5-.14.14-.29.3-.13.59.17.29.74 1.22 1.59 1.97 1.09.97 2.01 1.27 2.3 1.41.29.14.46.12.63-.07.17-.19.72-.84.92-1.13.19-.29.38-.24.65-.14.27.1 1.7.8 1.99.95.29.14.48.22.55.34.07.12.07.7-.17 1.38z"/></svg>
+      </span>
+      <div class="min-w-0">
+        <p class="font-medium text-slate-900 truncate">{{ a.tenant_name }}</p>
+        <p class="text-xs text-slate-500 truncate">{{ a.display_phone || 'Number not checked yet' }}</p>
+      </div>
+      <span class="ml-auto" [ngClass]="qualityOf(a.quality_rating).css">Quality: {{ qualityOf(a.quality_rating).label }}</span>
+    </a>
+  </div>
+
+  <div *ngIf="campaigns.length || filtering" class="card card-body grid gap-3 sm:grid-cols-3">
+    <select class="input" [(ngModel)]="filters.tenant_id" (change)="load()">
+      <option value="">All customers</option>
+      <option *ngFor="let a of accounts" [ngValue]="a.tenant_id">{{ a.tenant_name }}</option>
+    </select>
+    <select class="input" [(ngModel)]="filters.status" (change)="load()">
+      <option value="">All statuses</option>
+      <option *ngFor="let s of statuses" [value]="s">{{ statusLabels[s] }}</option>
+    </select>
+    <input class="input" placeholder="Search name or template..." [(ngModel)]="filters.search" (keyup.enter)="load()"/>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <!-- First visit: the whole flow in four steps -->
+  <div *ngIf="!loading && !campaigns.length && !filtering" class="card overflow-hidden">
+    <div class="px-6 py-10 sm:px-10 text-center bg-gradient-to-br from-emerald-50 via-white to-white">
+      <div class="mx-auto w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.87 9.87 0 004.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2z"/></svg>
+      </div>
+      <h2 class="mt-4 text-lg font-semibold text-slate-900">Send your first WhatsApp campaign</h2>
+      <p class="mt-1 text-sm text-slate-500">Four steps. The panel guides you through each one.</p>
+      <div class="mt-8 grid gap-4 sm:grid-cols-4 text-left">
+        <div class="rounded-xl bg-white border p-4" [ngClass]="connected.length ? 'border-emerald-300' : 'border-slate-200'">
+          <p class="text-xs font-semibold text-emerald-600">STEP 1 <span *ngIf="connected.length">&#10003;</span></p>
+          <p class="mt-1 text-sm font-medium text-slate-900">Connect your number</p>
+          <p class="mt-1 text-xs text-slate-500">A one-time setup with Meta, explained click by click.</p>
+        </div>
+        <div class="rounded-xl bg-white border border-slate-200 p-4">
+          <p class="text-xs font-semibold text-emerald-600">STEP 2</p>
+          <p class="mt-1 text-sm font-medium text-slate-900">Write the message</p>
+          <p class="mt-1 text-xs text-slate-500">As a template Meta approves — usually within minutes.</p>
+        </div>
+        <div class="rounded-xl bg-white border border-slate-200 p-4">
+          <p class="text-xs font-semibold text-emerald-600">STEP 3</p>
+          <p class="mt-1 text-sm font-medium text-slate-900">Upload contacts</p>
+          <p class="mt-1 text-xs text-slate-500">A CSV with mobile numbers; landlines are left out for you.</p>
+        </div>
+        <div class="rounded-xl bg-white border border-slate-200 p-4">
+          <p class="text-xs font-semibold text-emerald-600">STEP 4</p>
+          <p class="mt-1 text-sm font-medium text-slate-900">Test, then send</p>
+          <p class="mt-1 text-xs text-slate-500">At a safe pace. Replies come to the panel and your email.</p>
+        </div>
+      </div>
+      <a *ngIf="!connected.length" routerLink="/whatsapp/setup" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 mt-8">Connect WhatsApp</a>
+      <a *ngIf="connected.length" routerLink="/whatsapp/new" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 mt-8">Create a campaign</a>
+    </div>
+  </div>
+
+  <div *ngIf="!loading && !campaigns.length && filtering" class="card card-body text-center text-sm text-slate-500">
+    No campaign matches these filters.
+  </div>
+
+  <div *ngIf="!loading && campaigns.length" class="card overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[60rem]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th">Campaign</th>
+            <th class="th">Status</th>
+            <th class="th w-72">Progress</th>
+            <th class="th">Replies</th>
+            <th class="th">Created</th>
+            <th class="th text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr *ngFor="let c of campaigns" class="hover:bg-slate-50">
+            <td class="td max-w-xs">
+              <a [routerLink]="['/whatsapp', c.id]" class="font-medium text-slate-900 hover:text-emerald-700 block truncate">{{ c.name }}</a>
+              <p class="text-xs text-slate-500 truncate mt-0.5">{{ c.tenant_name }}<span *ngIf="c.display_phone"> &middot; {{ c.display_phone }}</span>
+                &middot; {{ c.template_name || 'No template yet' }}</p>
+            </td>
+            <td class="td whitespace-nowrap">
+              <span [ngClass]="statusClass(c.status)" class="gap-1.5">
+                <span *ngIf="c.status === 'sending'" class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                {{ statusLabels[c.status!] }}
+              </span>
+              <p *ngIf="c.status === 'scheduled'" class="text-xs text-slate-500 mt-1">{{ c.scheduled_at | date:'d MMM, h:mm a' }}</p>
+              <p *ngIf="c.status === 'sending' && c.next_send_at" class="text-xs text-slate-500 mt-1">Next {{ c.next_send_at | date:'d MMM, h:mm a' }}</p>
+              <p *ngIf="c.status === 'paused' && c.status_reason" class="text-xs text-amber-700 mt-1">Needs attention</p>
+            </td>
+            <td class="td">
+              <ng-container *ngIf="c.stats?.total; else noList">
+                <div class="h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                  <div class="h-full bg-sky-500" [style.width.%]="share(c, c.stats!.read)"></div>
+                  <div class="h-full bg-emerald-500" [style.width.%]="share(c, c.stats!.delivered - c.stats!.read)"></div>
+                  <div class="h-full bg-emerald-300" [style.width.%]="share(c, c.stats!.sent - c.stats!.delivered)"></div>
+                  <div class="h-full bg-red-500" [style.width.%]="share(c, c.stats!.failed)"></div>
+                </div>
+                <p class="text-xs text-slate-500 mt-1.5">
+                  {{ c.stats!.sent | number }} of {{ c.stats!.total | number }} sent &middot; {{ c.stats!.read | number }} read
+                  <span *ngIf="c.stats!.failed" class="text-red-600">&middot; {{ c.stats!.failed }} failed</span>
+                </p>
+              </ng-container>
+              <ng-template #noList><span class="text-xs text-slate-400">No contacts yet</span></ng-template>
+            </td>
+            <td class="td whitespace-nowrap">
+              <span class="font-semibold" [ngClass]="c.stats?.replied ? 'text-emerald-700' : 'text-slate-400'">{{ c.stats?.replied || 0 }}</span>
+            </td>
+            <td class="td whitespace-nowrap text-slate-500">{{ c.created_at | date:'d MMM yyyy' }}</td>
+            <td class="td text-right whitespace-nowrap">
+              <a [routerLink]="['/whatsapp', c.id]" class="btn-ghost btn-sm">Open</a>
+              <button type="button" class="btn-ghost btn-sm ml-2" (click)="duplicate(c)" title="Same message, new list">Duplicate</button>
+              <button type="button" class="btn-danger btn-sm ml-2" [disabled]="c.status === 'sending'"
+                      [title]="c.status === 'sending' ? 'Pause it first' : 'Delete'" (click)="askDelete(c)">Delete</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<app-confirm [open]="confirmOpen" title="Delete this campaign?" [message]="deleteMessage"
+             (confirmed)="confirmDelete()" (cancelled)="confirmOpen = false"></app-confirm>
+
+<!-- Do-not-message list -->
+<div *ngIf="listOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50" (click)="listOpen = false">
+  <div class="card w-full max-w-xl max-h-[90vh] flex flex-col" (click)="$event.stopPropagation()">
+    <div class="card-head">
+      <div>
+        <h3 class="font-semibold text-slate-900">Do-not-message list</h3>
+        <p class="text-xs text-slate-500 mt-0.5">
+          Per customer. Numbers that replied STOP or pressed "Stop promotions" land here by themselves, and every campaign skips them.
+        </p>
+      </div>
+      <button type="button" class="text-slate-400 hover:text-slate-600 text-xl leading-none" (click)="listOpen = false">&times;</button>
+    </div>
+    <div class="card-body space-y-4 overflow-y-auto">
+      <div>
+        <label class="label">Customer</label>
+        <select class="input" [(ngModel)]="listTenantId" (change)="loadList()">
+          <option [ngValue]="null">Choose a customer</option>
+          <option *ngFor="let a of accounts" [ngValue]="a.tenant_id">{{ a.tenant_name }}</option>
+        </select>
+      </div>
+      <div *ngIf="listTenantId">
+        <label class="label">Add numbers</label>
+        <textarea class="input font-mono text-xs" rows="3" [(ngModel)]="addText" placeholder="98406 24198&#10;+91 98211 61388"></textarea>
+        <div class="mt-2 flex items-center justify-between gap-3">
+          <p class="hint mt-0">For people who asked not to be messaged. One per line.</p>
+          <button type="button" class="btn-primary btn-sm shrink-0" [disabled]="adding || !addText.trim()" (click)="addToList()">
+            {{ adding ? 'Adding...' : 'Add to list' }}
+          </button>
+        </div>
+      </div>
+      <div *ngIf="listTenantId">
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <p class="text-sm font-medium text-slate-700">{{ optouts.length }} number(s)</p>
+          <input class="input max-w-[14rem] py-1.5" placeholder="Search..." [(ngModel)]="listSearch"/>
+        </div>
+        <div *ngIf="listLoading" class="text-sm text-slate-500 py-4">Loading...</div>
+        <div *ngIf="!listLoading && !optouts.length" class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+          Nobody has opted out of this customer's WhatsApp yet.
+        </div>
+        <div *ngIf="!listLoading && optouts.length" class="rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-80 overflow-y-auto">
+          <div *ngFor="let o of filteredOptouts" class="px-3 py-2.5 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm text-slate-900">{{ o.phone_display }}</p>
+              <p class="text-xs text-slate-500 truncate">
+                {{ sourceLabels[o.source] }} &middot; {{ o.created_at | date:'d MMM yyyy' }}
+                <span *ngIf="o.campaign_name">&middot; {{ o.campaign_name }}</span>
+              </p>
+            </div>
+            <button type="button" class="btn-ghost btn-sm shrink-0" (click)="removeFromList(o)"
+                    title="Only if they asked to be messaged again">Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

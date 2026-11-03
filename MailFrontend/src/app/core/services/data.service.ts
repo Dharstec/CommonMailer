@@ -3,7 +3,9 @@ import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 import {
   ApiResponse, Campaign, CampaignAttachment, CampaignPreview, CampaignRecipient, CampaignUnsubscribe,
-  ContactForm, DashboardStats, EmailTemplate, ImportSummary, Submission, Tenant, TenantSmtp
+  ContactForm, DashboardStats, EmailTemplate, ImportSummary, Submission, Tenant, TenantSmtp,
+  WaAccountDetail, WaAccountForm, WaAccountSummary, WaCampaign, WaConversation, WaImportSummary, WaNumberInfo,
+  WaOptout, WaRecipient, WaTemplate, WaTemplateDraft
 } from '../models';
 
 /** Customers and their sending accounts. */
@@ -129,4 +131,64 @@ export class CampaignService {
     return this.api.post('campaigns/unsubscribes', { tenant_id: tenantId, emails });
   }
   removeUnsubscribe(id: number): Observable<ApiResponse<null>> { return this.api.delete(`campaigns/unsubscribes/${id}`); }
+}
+
+/** WhatsApp: connecting a number, templates, campaigns and their replies. */
+@Injectable({ providedIn: 'root' })
+export class WhatsappService {
+  constructor(private api: ApiService) {}
+
+  accounts(): Observable<WaAccountSummary[]> { return this.api.get<WaAccountSummary[]>('whatsapp/accounts'); }
+  account(tenantId: number): Observable<WaAccountDetail> { return this.api.get<WaAccountDetail>(`whatsapp/accounts/${tenantId}`); }
+  saveAccount(tenantId: number, body: WaAccountForm): Observable<ApiResponse<WaAccountDetail> & { check?: { ok: boolean; info?: WaNumberInfo; message?: string } }> {
+    return this.api.put(`whatsapp/accounts/${tenantId}`, body);
+  }
+  checkAccount(tenantId: number): Observable<ApiResponse<WaNumberInfo>> { return this.api.post(`whatsapp/accounts/${tenantId}/check`, {}); }
+  testAccount(tenantId: number, to: string): Observable<ApiResponse<null>> { return this.api.post(`whatsapp/accounts/${tenantId}/test`, { to }); }
+  disconnect(tenantId: number): Observable<ApiResponse<null>> { return this.api.delete(`whatsapp/accounts/${tenantId}`); }
+  uploadImage(tenantId: number, image: Blob): Observable<ApiResponse<{ url: string; size_bytes: number }>> {
+    return this.api.upload(`whatsapp/accounts/${tenantId}/images`, image);
+  }
+  templates(tenantId: number): Observable<WaTemplate[]> { return this.api.get<WaTemplate[]>(`whatsapp/accounts/${tenantId}/templates`); }
+  createTemplate(tenantId: number, body: WaTemplateDraft): Observable<ApiResponse<{ id: string; status: string }>> {
+    return this.api.post(`whatsapp/accounts/${tenantId}/templates`, body);
+  }
+
+  list(query: Record<string, any> = {}): Observable<WaCampaign[]> { return this.api.get<WaCampaign[]>('wa-campaigns', query); }
+  get(id: number): Observable<WaCampaign> { return this.api.get<WaCampaign>(`wa-campaigns/${id}`); }
+  create(body: WaCampaign): Observable<ApiResponse<WaCampaign>> { return this.api.post('wa-campaigns', body); }
+  update(id: number, body: WaCampaign): Observable<ApiResponse<WaCampaign>> { return this.api.put(`wa-campaigns/${id}`, body); }
+  remove(id: number): Observable<ApiResponse<null>> { return this.api.delete(`wa-campaigns/${id}`); }
+  duplicate(id: number): Observable<ApiResponse<WaCampaign>> { return this.api.post(`wa-campaigns/${id}/duplicate`, {}); }
+
+  recipients(id: number, query: Record<string, any>): Observable<ApiResponse<WaRecipient[]>> {
+    return this.api.getFull<WaRecipient[]>(`wa-campaigns/${id}/recipients`, query);
+  }
+  uploadRecipients(id: number, file: Blob, filename: string): Observable<ApiResponse<WaImportSummary>> {
+    return this.api.upload(`wa-campaigns/${id}/recipients`, file, { filename });
+  }
+  clearRecipients(id: number): Observable<ApiResponse<null>> { return this.api.delete(`wa-campaigns/${id}/recipients`); }
+  removeRecipient(id: number, recipientId: number): Observable<ApiResponse<null>> {
+    return this.api.delete(`wa-campaigns/${id}/recipients/${recipientId}`);
+  }
+  exportRecipients(id: number): Observable<Blob> { return this.api.download(`wa-campaigns/${id}/recipients/export`); }
+
+  sendTest(id: number, body: WaCampaign & { to: string }): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/test`, body); }
+  start(id: number, body: { consent: boolean; scheduled_at?: string | null }): Observable<ApiResponse<null>> {
+    return this.api.post(`wa-campaigns/${id}/start`, body);
+  }
+  pause(id: number): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/pause`, {}); }
+  cancel(id: number): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/cancel`, {}); }
+  retryFailed(id: number): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/retry-failed`, {}); }
+
+  conversations(id: number): Observable<WaConversation[]> { return this.api.get<WaConversation[]>(`wa-campaigns/${id}/conversations`); }
+  reply(id: number, phone: string, text: string): Observable<ApiResponse<null>> {
+    return this.api.post(`wa-campaigns/${id}/conversations/${phone}/reply`, { text });
+  }
+
+  optouts(tenantId: number): Observable<WaOptout[]> { return this.api.get<WaOptout[]>('wa-campaigns/optouts', { tenant_id: tenantId }); }
+  addOptouts(tenantId: number, phones: string): Observable<ApiResponse<null>> {
+    return this.api.post('wa-campaigns/optouts', { tenant_id: tenantId, phones });
+  }
+  removeOptout(id: number): Observable<ApiResponse<null>> { return this.api.delete(`wa-campaigns/optouts/${id}`); }
 }

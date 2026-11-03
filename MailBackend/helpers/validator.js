@@ -222,6 +222,86 @@ const unsubscribeAddSchema = Joi.object({
     emails: Joi.string().max(200000).required().label('Email addresses')
 });
 
+// ------------------------------------------------------------- WhatsApp --
+
+const metaId = (label) => Joi.string().trim().pattern(/^\d{5,30}$/).label(label)
+    .messages({ 'string.pattern.base': '{{#label}} is the long number from Meta — digits only' });
+
+/** "a@x.com, b@y.com" — up to five addresses that get every WhatsApp reply by email. */
+const notifyEmails = (value, helpers) => {
+    const list = String(value || '').split(/[\s,;]+/).filter(Boolean);
+    if (list.length > 5) return helpers.error('string.emailList');
+    const bad = list.find((e) => Joi.string().email({ tlds: { allow: false } }).validate(e).error);
+    return bad ? helpers.error('string.emailList') : list.join(', ');
+};
+
+const waAccountSchema = Joi.object({
+    phone_number_id: metaId('Phone number ID').required(),
+    waba_id: metaId('WhatsApp Business Account ID').required(),
+    app_id: metaId('App ID').allow('', null),
+    // Blank on an update keeps the saved one, like the SMTP password.
+    access_token: Joi.string().trim().min(20).max(2000).allow('', null).label('Access token'),
+    app_secret: Joi.string().trim().pattern(/^[A-Za-z0-9]{16,64}$/).allow('', null).label('App secret'),
+    default_country: Joi.string().trim().pattern(/^\d{1,3}$/).default('91').label('Country code'),
+    notify_emails: Joi.string().trim().max(600).allow('', null).custom(notifyEmails)
+        .messages({ 'string.emailList': '{{#label}} takes up to five email addresses, separated by commas' })
+        .label('Email replies to')
+});
+
+const waSlotValues = (key) => Joi.object().pattern(key, Joi.string().max(1000).allow('')).default({});
+
+const waCampaignSchema = Joi.object({
+    tenant_id: Joi.number().integer().required().label('Customer'),
+    name: noHtml().trim().min(2).max(150).required().label('Campaign name'),
+    template_name: Joi.string().trim().max(512).allow('', null).label('Template'),
+    template_language: Joi.string().trim().max(20).allow('', null),
+    template_category: Joi.string().valid('MARKETING', 'UTILITY', 'AUTHENTICATION').allow('', null),
+    template_format: Joi.string().valid('POSITIONAL', 'NAMED').allow('', null),
+    template_components: Joi.array().items(Joi.object().unknown(true)).max(10).allow(null),
+    // What fills each {{slot}}: merge text such as "{{first_name|Sir/Madam}}".
+    variables: Joi.object({
+        header: waSlotValues(/^[A-Za-z0-9_]+$/),
+        body: waSlotValues(/^[A-Za-z0-9_]+$/),
+        buttons: waSlotValues(/^\d+$/)
+    }).default({}),
+    header_media_url: Joi.string().trim().max(1000).uri({ scheme: ['http', 'https'] }).allow('', null).label('Header file link')
+});
+
+/** The editor's unsaved state, for a test message. */
+const waTestSchema = waCampaignSchema.fork(['tenant_id', 'name'], (rule) => rule.optional()).keys({
+    to: Joi.string().trim().max(40).required().label('Your WhatsApp number')
+});
+
+const waTemplateSchema = Joi.object({
+    name: Joi.string().trim().lowercase().pattern(/^[a-z0-9_]{1,512}$/).required().label('Template name')
+        .messages({ 'string.pattern.base': '{{#label}} may use only small letters, numbers and _' }),
+    category: Joi.string().valid('MARKETING', 'UTILITY').default('MARKETING'),
+    language: Joi.string().trim().pattern(/^[a-z]{2,3}(_[A-Z]{2})?$/).default('en').label('Language'),
+    header_format: Joi.string().valid('NONE', 'TEXT', 'IMAGE').default('NONE'),
+    header_text: Joi.string().trim().max(60).allow('', null).label('Header text'),
+    header_image_url: Joi.string().trim().max(1000).uri({ scheme: ['http', 'https'] }).allow('', null).label('Header picture'),
+    body: Joi.string().trim().min(1).max(1024).required().label('Message'),
+    examples: Joi.object().pattern(/^\d+$/, Joi.string().trim().max(200).allow('')).default({}),
+    footer: Joi.string().trim().max(60).allow('', null).label('Footer'),
+    buttons: Joi.array().max(10).items(Joi.object({
+        type: Joi.string().valid('QUICK_REPLY', 'URL', 'PHONE_NUMBER').required(),
+        text: Joi.string().trim().min(1).max(25).required().label('Button text'),
+        url: Joi.string().trim().max(2000).uri({ scheme: ['http', 'https'] }).label('Button link')
+            .when('type', { is: 'URL', then: Joi.required(), otherwise: Joi.forbidden() }),
+        phone_number: Joi.string().trim().pattern(/^\+?\d{8,15}$/).label('Button phone number')
+            .when('type', { is: 'PHONE_NUMBER', then: Joi.required(), otherwise: Joi.forbidden() })
+    })).default([])
+});
+
+const waOptoutAddSchema = Joi.object({
+    tenant_id: Joi.number().integer().required().label('Customer'),
+    phones: Joi.string().max(200000).required().label('Phone numbers')
+});
+
+const waReplySchema = Joi.object({
+    text: Joi.string().trim().min(1).max(4096).required().label('Reply')
+});
+
 /** Express middleware factory: validates req.body and replaces it with the cast value. */
 function validate(schema) {
     return (req, res, next) => {
@@ -240,5 +320,7 @@ function validate(schema) {
 
 module.exports = {
     tenantSchema, smtpSchema, formSchema, fieldSchema, templateSchema,
-    campaignSchema, campaignPreviewSchema, unsubscribeAddSchema, validate
+    campaignSchema, campaignPreviewSchema, unsubscribeAddSchema,
+    waAccountSchema, waCampaignSchema, waTestSchema, waTemplateSchema, waOptoutAddSchema, waReplySchema,
+    validate
 };

@@ -307,3 +307,205 @@ export interface DashboardStats {
   recent: Submission[];
   daily: { day: string; total: number }[];
 }
+
+// -------------------------------------------------------------- WhatsApp --
+
+export type WaQuality = 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN' | string | null;
+
+/** A customer and whether its WhatsApp number is connected — for the pickers. */
+export interface WaAccountSummary {
+  tenant_id: number;
+  tenant_name: string;
+  connected: boolean;
+  display_phone: string | null;
+  verified_name: string | null;
+  quality_rating: WaQuality;
+  messaging_limit: string | null;
+  webhook_seen_at: string | null;
+  smtp_ready: boolean;
+}
+
+/** The saved connection, without the token or app secret. */
+export interface WaAccount {
+  phone_number_id: string;
+  waba_id: string;
+  app_id: string | null;
+  default_country: string;
+  notify_emails: string | null;
+  display_phone: string | null;
+  verified_name: string | null;
+  quality_rating: WaQuality;
+  messaging_limit: string | null;
+  checked_at: string | null;
+  webhook_seen_at: string | null;
+  has_token: boolean;
+  has_app_secret: boolean;
+}
+
+export interface WaAccountDetail {
+  tenant_id: number;
+  tenant_name: string;
+  connected: boolean;
+  account: WaAccount | null;
+  webhook: { url: string; verify_token: string } | null;
+  pace: CampaignPace;
+}
+
+export interface WaAccountForm {
+  phone_number_id: string;
+  waba_id: string;
+  app_id: string;
+  access_token: string;
+  app_secret: string;
+  default_country: string;
+  notify_emails: string;
+}
+
+export interface WaNumberInfo {
+  display_phone: string | null;
+  verified_name: string | null;
+  quality_rating: WaQuality;
+  messaging_limit: string | null;
+  name_status?: string | null;
+}
+
+export interface WaTemplateComponent {
+  type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS' | string;
+  format?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'LOCATION' | string;
+  text?: string;
+  buttons?: { type: string; text: string; url?: string; phone_number?: string }[];
+  example?: unknown;
+}
+
+export interface WaTemplate {
+  id: string;
+  name: string;
+  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED' | string;
+  category: string;
+  language: string;
+  components: WaTemplateComponent[];
+  parameter_format: 'POSITIONAL' | 'NAMED' | string;
+  rejected_reason: string | null;
+  quality: string | null;
+}
+
+export interface WaTemplateButton {
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER';
+  text: string;
+  url?: string;
+  phone_number?: string;
+}
+
+export interface WaTemplateDraft {
+  name: string;
+  category: 'MARKETING' | 'UTILITY';
+  language: string;
+  header_format: 'NONE' | 'TEXT' | 'IMAGE';
+  header_text: string;
+  header_image_url: string;
+  body: string;
+  examples: Record<string, string>;
+  footer: string;
+  buttons: WaTemplateButton[];
+}
+
+/** What fills each {{slot}} of the template: merge text such as "{{first_name|Sir/Madam}}". */
+export interface WaVariables {
+  header: Record<string, string>;
+  body: Record<string, string>;
+  buttons: Record<string, string>;
+}
+
+export interface WaStats {
+  total: number;
+  pending: number;
+  sending: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  skipped: number;
+  replied: number;
+}
+
+export interface WaImportSummary {
+  filename: string | null;
+  total_rows: number;
+  imported: number;
+  invalid_count: number;
+  invalid: { row: number; value: string; reason: string }[];
+  duplicates: number;
+  suppressed: number;
+  country: string;
+  columns: string[];
+}
+
+export interface WaCampaign {
+  id?: number;
+  tenant_id: number | null;
+  tenant_name?: string;
+  name: string;
+  status?: CampaignStatus;
+  template_name: string | null;
+  template_language: string | null;
+  template_category: string | null;
+  template_format: string | null;
+  template_components: WaTemplateComponent[] | null;
+  variables: WaVariables;
+  header_media_url: string | null;
+  columns?: string[];
+  import_summary?: WaImportSummary | null;
+  scheduled_at?: string | null;
+  next_send_at?: string | null;
+  status_reason?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  display_phone?: string | null;
+  stats?: WaStats;
+  account?: Partial<WaAccount> & { connected: boolean };
+  pace?: CampaignPace;
+  editable?: { content: boolean; recipients: boolean };
+}
+
+export type WaRecipientStatus = 'pending' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'skipped';
+
+export interface WaRecipient {
+  id: number;
+  phone: string;
+  phone_display: string;
+  data: Record<string, string>;
+  status: WaRecipientStatus;
+  error?: string | null;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  replied_at?: string | null;
+}
+
+export interface WaMessage {
+  id: number;
+  direction: 'in' | 'out';
+  body: string;
+  created_at: string;
+}
+
+export interface WaConversation {
+  phone: string;
+  phone_display: string;
+  data: Record<string, string>;
+  messages: WaMessage[];
+  last_in: string | null;
+  last_at: string;
+  can_reply: boolean;
+  opted_out: boolean;
+}
+
+export interface WaOptout {
+  id: number;
+  phone: string;
+  phone_display: string;
+  source: 'reply' | 'button' | 'manual';
+  campaign_name?: string | null;
+  created_at: string;
+}

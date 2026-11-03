@@ -22,6 +22,7 @@ const {
 const { baseUrl } = require('../helpers/links');
 const { explainSmtpError } = require('../helpers/smtpErrors');
 const campaignPace = require('../helpers/campaignPace');
+const images = require('../helpers/images');
 const logger = require('../helpers/logger');
 
 const handleServerError = (res, error, where) => {
@@ -34,17 +35,6 @@ const EDITABLE = ['draft', 'scheduled', 'paused'];
 
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
-
-/**
- * Logo and banner uploads, recognised by their first bytes rather than by what
- * the browser claims. Only what every inbox shows: the panel turns SVG and
- * WebP into PNG or JPG before it uploads.
- */
-const IMAGE_TYPES = [
-    { type: 'image/png', ext: 'png', magic: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
-    { type: 'image/jpeg', ext: 'jpg', magic: Buffer.from([0xff, 0xd8, 0xff]) },
-    { type: 'image/gif', ext: 'gif', magic: Buffer.from('GIF8') }
-];
 
 /** Under nginx's 30 s proxy_read_timeout, with room to answer before it gives up. */
 const TEST_REPLY_WAIT_MS = 25 * 1000;
@@ -731,21 +721,11 @@ const uploadImage = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'The picture is empty.' });
         }
 
-        const kind = IMAGE_TYPES.find((t) => req.body.subarray(0, t.magic.length).equals(t.magic));
-        if (!kind) return res.status(400).json({ status: 'error', message: 'Use a PNG, JPG or GIF picture.' });
+        const image = await images.save({ tenantId: row.tenant_id, campaignId: id, buffer: req.body });
+        if (!image) return res.status(400).json({ status: 'error', message: 'Use a PNG, JPG or GIF picture.' });
 
-        const token = newToken();
-        await POSTGRESQLService.PostgresAny(
-            `INSERT INTO campaign_images (tenant_id, campaign_id, token, content_type, size_bytes, content)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [row.tenant_id, id, token, kind.type, req.body.length, req.body]
-        );
-
-        logger.info('Campaign image uploaded', { id, type: kind.type, bytes: req.body.length, by: req.email });
-        res.status(201).json({
-            status: 'success',
-            data: { url: `${baseUrl()}/api/c/img/${token}.${kind.ext}`, content_type: kind.type, size_bytes: req.body.length }
-        });
+        logger.info('Campaign image uploaded', { id, type: image.content_type, bytes: image.size_bytes, by: req.email });
+        res.status(201).json({ status: 'success', data: image });
     } catch (error) {
         handleServerError(res, error, 'campaign.uploadImage');
     }

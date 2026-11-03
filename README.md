@@ -523,6 +523,63 @@ after weeks of clean sending, and a little at a time.
 
 ---
 
+## WhatsApp campaigns
+
+One approved WhatsApp message to a whole list, from a customer's own business
+number, through **Meta's official WhatsApp Business Platform (Cloud API)** —
+the only way to message many people without the number being banned. Open
+**WhatsApp** in the side menu; the panel guides each step.
+
+1. **Setup (once per customer)** — **WhatsApp → WhatsApp setup** walks through
+   Meta's screens in seven steps: a number that is not on the WhatsApp app, a
+   Meta app, a permanent System User token, the App ID and secret, where to email
+   replies, the webhook, and a test message. Saving asks Meta about the number at
+   once, so a wrong ID or token shows straight away.
+2. **Message** — a business may start a chat only with a **template Meta
+   approved**. Pick one, or write one in the panel (there is a ready-made
+   example) and submit it — approval usually takes minutes. Its `{{1}}`, `{{2}}`
+   are filled per person with merge text such as `{{first_name|Sir/Madam}}`, and
+   a header picture can be uploaded. A phone-style preview shows the result.
+3. **Contacts** — a CSV with a `phone` column (`Mobile`, `WhatsApp`, `Contact No`
+   also work). Numbers without a country code get the customer's default (91);
+   landlines, duplicates and anyone on the do-not-message list are left out and
+   listed. The list goes out top to bottom.
+4. **Review & send** — a checklist, a free test to your own WhatsApp, a consent
+   tick ("these contacts know my business"), then send or schedule.
+
+The **Report** shows sent, delivered, read, replied and failed per person, and
+the **replies** themselves: answer from the panel for 24 hours after someone's
+last message. Every reply is also emailed to the addresses set in setup,
+through the customer's own mailbox.
+
+### Keeping the number healthy
+
+Meta judges a number by how many people block or report it (its *quality
+rating*); a Low rating gets the number limited. So:
+
+- **A slow pace**: at least 2 minutes between messages, at most 20 in any 24
+  hours per number, the rest queued day by day — `WHATSAPP_GAP_MINUTES` and
+  `WHATSAPP_DAILY_LIMIT` in `MailBackend/.env`. Raise them only while the quality
+  stays Green, never above Meta's own limit (250 a day for a new number).
+- **A Low (red) quality rating pauses** every campaign of that number; it is
+  checked while sending and before starting.
+- **Three failures in a row pause** the campaign; "spam limit", payment, token
+  and template problems pause it at once and say what to fix.
+- **Opt-outs are automatic**: a reply of STOP, the template's "Stop promotions"
+  button, or Meta's own marketing opt-out puts the number on the customer's
+  **do-not-message list**, which every campaign skips.
+- **Every variable must fill**: starting is refused while any contact would get
+  an empty `{{2}}` — give it a fallback.
+
+Meta bills each marketing message (WhatsApp Manager → Payment settings);
+replies within 24 hours are free.
+
+> The webhook (`/api/wa/webhook`) must be reachable over **https** —
+> `PUBLIC_BASE_URL` is what the setup page shows Meta. Every call is checked
+> against the app secret, so replies and opt-outs cannot be faked.
+
+---
+
 ## Troubleshooting
 
 **`403` "This form is not enabled for this website."** — the site's origin is not

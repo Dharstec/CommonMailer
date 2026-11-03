@@ -78,7 +78,11 @@ app.use(helmet({
 }));
 
 app.use(cors(corsOptionsDelegate));
-app.use(bodyParser.json({ limit: '1mb' }));
+// The WhatsApp webhook is signed over its exact bytes, so those are kept for it.
+app.use(bodyParser.json({
+    limit: '1mb',
+    verify: (req, res, buf) => { if (req.originalUrl.startsWith('/api/wa/webhook')) req.rawBody = buf; }
+}));
 app.use(bodyParser.urlencoded({ limit: '1mb', extended: true }));
 
 // Global flood protection. Route-level limiters (login, public submit) are
@@ -148,7 +152,7 @@ app.use((err, req, res, next) => {
  * them builds the connection pool, and on a fresh box the database does not
  * exist until ensureDatabase() has run.
  *
- * The campaign sender starts last: it reads tables the migrations create.
+ * The campaign senders start last: they read tables the migrations create.
  */
 (async () => {
     try {
@@ -159,10 +163,12 @@ app.use((err, req, res, next) => {
         const { runMigrations } = require('./helpers/migrate');
         const { seedFirstAdmin } = require('./models/auth');
         const campaignWorker = require('./helpers/campaignWorker');
+        const whatsappWorker = require('./helpers/whatsappWorker');
 
         await runMigrations();
         await seedFirstAdmin();
         await campaignWorker.start();
+        await whatsappWorker.start();
 
         app.listen(process.env.PORT, () => {
             console.log(`🚀 CommonMailer running on port ${process.env.PORT}`);

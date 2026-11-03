@@ -1,0 +1,707 @@
+<div class="max-w-7xl mx-auto space-y-5">
+
+  <!-- ============================================================ HEADER -->
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="flex items-start gap-3 min-w-0">
+      <a routerLink="/whatsapp" class="mt-1.5 text-slate-400 hover:text-slate-600" title="Back to WhatsApp campaigns">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-2xl font-bold text-slate-900 truncate">{{ isNew ? 'New WhatsApp campaign' : (campaign.name || 'Untitled') }}</h1>
+          <span *ngIf="!isNew" [ngClass]="statusClass(campaign.status)">{{ statusLabels[campaign.status || 'draft'] }}</span>
+        </div>
+        <p class="text-sm text-slate-500 mt-0.5" *ngIf="account">
+          {{ account.tenant_name }}<span *ngIf="account.display_phone"> &middot; {{ account.display_phone }}</span>
+          <span *ngIf="!isNew"> &middot; {{ stats.total | number }} contact(s)</span>
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span *ngIf="dirty && !isNew && canEdit" class="text-xs font-medium text-amber-600">Unsaved changes</span>
+      <button *ngIf="!isNew && canEdit" type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="saving" (click)="save()">
+        {{ saving ? 'Saving...' : 'Save' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- =========================================================== STEPPER -->
+  <div class="card px-4 py-3">
+    <ol class="flex items-center gap-1 sm:gap-2 overflow-x-auto">
+      <li *ngFor="let s of steps; let i = index; let last = last" class="flex items-center gap-1 sm:gap-2 shrink-0">
+        <button type="button" (click)="go(s.key)"
+                class="flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-sm transition"
+                [ngClass]="step === s.key ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'">
+          <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                [ngClass]="s.done && step !== s.key ? 'bg-emerald-600 text-white' : step === s.key ? 'bg-white ring-2 ring-emerald-600 text-emerald-700' : 'bg-slate-100 text-slate-500'">
+            <ng-container *ngIf="s.done && step !== s.key">&#10003;</ng-container>
+            <ng-container *ngIf="!(s.done && step !== s.key)">{{ s.key === 'report' ? '◉' : i + 1 }}</ng-container>
+          </span>
+          {{ s.label }}
+        </button>
+        <span *ngIf="!last" class="h-px w-4 sm:w-10 bg-slate-200"></span>
+      </li>
+    </ol>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <div *ngIf="!isNew && !canEdit && step !== 'report' && !loading"
+       class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-600">
+    This campaign is {{ statusLabels[campaign.status || 'draft'] | lowercase }} — pause it to change the message. The contact list is fixed once sending starts.
+  </div>
+
+  <!-- =========================================================== DETAILS -->
+  <div *ngIf="step === 'details' && !loading" class="grid gap-5 lg:grid-cols-3">
+    <fieldset class="lg:col-span-2 card min-w-0" [disabled]="!canEdit" (input)="changed()" (change)="changed()">
+      <div class="card-head">
+        <div>
+          <h2 class="font-semibold text-slate-900">1. Details</h2>
+          <p class="text-xs text-slate-500 mt-0.5">A name for you, and the WhatsApp number the messages come from.</p>
+        </div>
+      </div>
+      <div class="card-body space-y-5">
+        <div>
+          <label class="label">Campaign name</label>
+          <input class="input" [(ngModel)]="campaign.name" maxlength="150" placeholder="e.g. Smart Factory — November"/>
+          <p class="hint">Only you see it.</p>
+        </div>
+        <div>
+          <label class="label">Send from</label>
+          <select class="input" [(ngModel)]="campaign.tenant_id" (ngModelChange)="templates = []">
+            <option [ngValue]="null">Choose a WhatsApp number</option>
+            <option *ngFor="let a of accounts" [ngValue]="a.tenant_id" [disabled]="!a.connected">
+              {{ a.tenant_name }} — {{ a.connected ? (a.display_phone || 'connected') : 'not connected yet' }}
+            </option>
+          </select>
+          <div *ngIf="account?.connected" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            <span [ngClass]="qualityOf(account!.quality_rating).css">Quality {{ qualityOf(account!.quality_rating).label }}</span>
+            <span class="badge-mute">Meta allows {{ limitOf(account!.messaging_limit) }} new people a day</span>
+            <span [ngClass]="account!.webhook_seen_at ? 'badge-ok' : 'badge-warn'">{{ account!.webhook_seen_at ? 'Replies connected' : 'Replies not connected' }}</span>
+          </div>
+        </div>
+        <div *ngIf="!connected.length" class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+          No WhatsApp number is connected yet. It is a one-time setup with Meta, about 20 minutes, explained click by click.
+          <a routerLink="/whatsapp/setup" class="block mt-2 font-semibold text-amber-900 underline">Open WhatsApp setup &rarr;</a>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="card card-body space-y-3 h-fit">
+      <p class="text-sm font-semibold text-slate-900">How a WhatsApp campaign works</p>
+      <ol class="space-y-3 text-[13px] text-slate-600">
+        <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center shrink-0">1</span>
+          A business may start a WhatsApp chat only with a <strong>template Meta approved</strong>.</li>
+        <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center shrink-0">2</span>
+          The template's <strong>{{ slot('1') }}</strong>, <strong>{{ slot('2') }}</strong> are filled from your list: name, company…</li>
+        <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center shrink-0">3</span>
+          Messages go out slowly, one by one, so the number stays healthy.</li>
+        <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center shrink-0">4</span>
+          When someone replies, you can answer freely for 24 hours — here, and replies are emailed to you.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- =========================================================== MESSAGE -->
+  <div *ngIf="step === 'message' && !loading" class="grid gap-5 lg:grid-cols-5">
+    <div class="lg:col-span-3 space-y-5 min-w-0">
+      <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900">
+        <strong>Choose the message.</strong> WhatsApp only lets a business start a chat with a template Meta approved.
+        Pick one below, or write a new one — approval usually takes a few minutes.
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="font-semibold text-slate-900">2. Templates</h2>
+            <p class="text-xs text-slate-500 mt-0.5">From this number's WhatsApp account, live from Meta.</p>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" class="btn-ghost btn-sm" [disabled]="templatesLoading" (click)="loadTemplates()">{{ templatesLoading ? 'Loading...' : 'Refresh' }}</button>
+            <button type="button" class="btn-primary btn-sm !bg-emerald-600 hover:!bg-emerald-700" [disabled]="!canEdit" (click)="openCreator()">+ New template</button>
+          </div>
+        </div>
+        <div class="card-body space-y-2.5">
+          <p *ngIf="templatesError" class="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">{{ templatesError }}</p>
+          <p *ngIf="!templatesLoading && !templatesError && !templates.length" class="text-sm text-slate-500">
+            No templates yet. Press <strong>+ New template</strong> — there is a ready-made example to start from.
+          </p>
+          <button *ngFor="let t of templates" type="button" [disabled]="!canEdit" (click)="choose(t)"
+                  class="w-full text-left rounded-xl border p-3.5 transition"
+                  [ngClass]="campaign.template_name === t.name && campaign.template_language === t.language
+                    ? 'border-emerald-500 ring-2 ring-emerald-100 bg-emerald-50/40' : 'border-slate-200 hover:border-slate-300'">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono text-sm font-semibold text-slate-900">{{ t.name }}</span>
+              <span [ngClass]="statusBadge(t.status)">{{ statusWord(t.status) }}</span>
+              <span class="badge-mute">{{ t.category | titlecase }}</span>
+              <span class="badge-mute">{{ t.language }}</span>
+            </div>
+            <p class="mt-1.5 text-xs text-slate-500 line-clamp-2">{{ excerpt(t) }}</p>
+            <p *ngIf="t.rejected_reason" class="mt-1 text-xs text-red-600">Meta's reason: {{ t.rejected_reason }}</p>
+          </button>
+        </div>
+      </div>
+
+      <fieldset *ngIf="campaign.template_name" class="card min-w-0" [disabled]="!canEdit">
+        <div class="card-head">
+          <div>
+            <h2 class="font-semibold text-slate-900">Fill in the template</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Each slot takes a column of your list, with a fallback for empty cells: {{ exampleMerge }}</p>
+          </div>
+        </div>
+        <div class="card-body space-y-5">
+          <div *ngIf="needsMedia">
+            <label class="label">Header {{ (slots.headerFormat || '') | lowercase }}</label>
+            <div class="flex gap-2">
+              <input class="input min-w-0" [(ngModel)]="campaign.header_media_url" (ngModelChange)="changed()" placeholder="Upload a picture, or paste https://…"/>
+              <label *ngIf="slots.headerFormat === 'IMAGE'" class="btn-ghost shrink-0 cursor-pointer" [class.opacity-50]="headerUploading">
+                <input type="file" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" [disabled]="headerUploading"
+                       (change)="$event.stopPropagation(); onHeaderFile($event)"/>
+                {{ headerUploading ? 'Uploading…' : 'Upload' }}
+              </label>
+            </div>
+            <p class="hint">JPG or PNG, made WhatsApp-sized as it uploads. Every contact sees the same picture.</p>
+          </div>
+
+          <div *ngFor="let n of slots.header">
+            <label class="label">Header {{ slot(n) }}</label>
+            <input class="input font-mono text-sm" [(ngModel)]="campaign.variables.header[n]" (ngModelChange)="changed()"/>
+          </div>
+
+          <div *ngFor="let n of slots.body">
+            <div class="flex items-center justify-between gap-2">
+              <label class="label">Message {{ slot(n) }}</label>
+              <span class="text-xs text-slate-500 truncate">For this contact: <strong class="text-slate-700">{{ filled(campaign.variables.body[n]) || 'empty' }}</strong></span>
+            </div>
+            <input class="input font-mono text-sm" [(ngModel)]="campaign.variables.body[n]" (ngModelChange)="changed()"
+                   [ngClass]="{ 'input-err': !(campaign.variables.body[n] || '').trim() }" [placeholder]="exampleMerge"/>
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <button *ngFor="let col of columns" type="button" class="btn-ghost btn-sm font-mono !px-2 !py-1 !text-[11px]"
+                      (click)="insertColumn('body', n, col)">{{ col }}</button>
+            </div>
+          </div>
+
+          <div *ngFor="let b of slots.buttons">
+            <label class="label">Button "{{ b.text }}" — end of its link</label>
+            <input class="input font-mono text-sm" [(ngModel)]="campaign.variables.buttons[b.index]" (ngModelChange)="changed()" placeholder="e.g. smart-factory"/>
+          </div>
+
+          <p *ngIf="!slots.body.length && !slots.header.length && !slots.buttons.length && !needsMedia" class="text-sm text-slate-500">
+            This template has nothing to fill in — everyone gets the same text.
+          </p>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="lg:col-span-2">
+      <div class="lg:sticky lg:top-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-sm font-semibold text-slate-900">Preview</p>
+          <select *ngIf="previewChoices.length" class="input !w-auto !py-1 text-xs" [(ngModel)]="previewRecipientId">
+            <option [ngValue]="null">As {{ nameOf(previewChoices[0].data) || previewChoices[0].phone_display }}</option>
+            <option *ngFor="let r of previewChoices.slice(1)" [ngValue]="r.id">As {{ nameOf(r.data) || r.phone_display }}</option>
+          </select>
+        </div>
+        <ng-container *ngTemplateOutlet="phone; context: { $implicit: bubble, name: account?.tenant_name }"></ng-container>
+        <p class="text-xs text-slate-500 text-center">{{ previewChoices.length ? 'Filled in from your list.' : 'Filled in with a sample person until you upload contacts.' }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================== CONTACTS -->
+  <div *ngIf="step === 'contacts' && !loading" class="space-y-5">
+    <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900">
+      <strong>Upload the contacts.</strong> A CSV with a <span class="font-mono">phone</span> column — mobile numbers only.
+      Numbers without a country code get +{{ campaign.import_summary?.country || '91' }}. Landlines and duplicates are left out for you,
+      and so is everyone on the do-not-message list. The list goes out top to bottom.
+    </div>
+
+    <div *ngIf="canEditList" class="card">
+      <div class="card-head">
+        <h2 class="font-semibold text-slate-900">3. Contacts</h2>
+        <div class="flex gap-2">
+          <button type="button" class="btn-ghost btn-sm" (click)="downloadSample()">Sample CSV</button>
+          <button type="button" class="btn-ghost btn-sm" (click)="pasteOpen = !pasteOpen">Paste numbers</button>
+          <button *ngIf="stats.total" type="button" class="btn-ghost btn-sm !text-red-600" (click)="confirmClearOpen = true">Clear list</button>
+        </div>
+      </div>
+      <div class="card-body space-y-4">
+        <label class="block rounded-xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition"
+               [ngClass]="dragOver ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-slate-50'"
+               (dragover)="$event.preventDefault(); dragOver = true" (dragleave)="dragOver = false" (drop)="onListDrop($event)">
+          <input type="file" accept=".csv,.txt,text/csv,text/plain" class="hidden" [disabled]="uploading" (change)="onListFile($event)"/>
+          <p class="text-sm font-medium text-slate-900">{{ uploading ? 'Reading the list…' : (stats.total ? 'Upload a new list (replaces this one)' : 'Drop your CSV here, or click to choose') }}</p>
+          <p class="mt-1 text-xs text-slate-500">phone, first_name, company — any other column becomes a fill-in too. Up to 20,000 rows.</p>
+        </label>
+        <div *ngIf="pasteOpen">
+          <textarea class="input font-mono text-xs" rows="5" [(ngModel)]="pasteText" placeholder="phone,first_name,company&#10;9840624198,Priya,Acme Textiles"></textarea>
+          <div class="mt-2 flex justify-end">
+            <button type="button" class="btn-primary btn-sm !bg-emerald-600 hover:!bg-emerald-700" [disabled]="uploading || !pasteText.trim()" (click)="uploadPasted()">Use these</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="importSummary" class="card card-body">
+      <div class="grid gap-4 grid-cols-2 sm:grid-cols-4">
+        <div><p class="text-xs uppercase tracking-wide text-slate-500">Imported</p><p class="text-2xl font-bold text-emerald-700">{{ importSummary.imported | number }}</p></div>
+        <div><p class="text-xs uppercase tracking-wide text-slate-500">Not a mobile / invalid</p><p class="text-2xl font-bold text-slate-900">{{ importSummary.invalid_count | number }}</p></div>
+        <div><p class="text-xs uppercase tracking-wide text-slate-500">Duplicates</p><p class="text-2xl font-bold text-slate-900">{{ importSummary.duplicates | number }}</p></div>
+        <div><p class="text-xs uppercase tracking-wide text-slate-500">Asked not to be messaged</p><p class="text-2xl font-bold text-slate-900">{{ importSummary.suppressed | number }}</p></div>
+      </div>
+      <details *ngIf="importSummary.invalid.length" class="mt-4 text-sm">
+        <summary class="cursor-pointer text-slate-600">Show the rows left out</summary>
+        <div class="mt-2 max-h-56 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+          <p *ngFor="let i of importSummary.invalid" class="px-3 py-1.5 text-xs text-slate-600">
+            Row {{ i.row }}: <span class="font-mono">{{ i.value || '(empty)' }}</span> — {{ i.reason }}
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <ng-container *ngTemplateOutlet="contactTable"></ng-container>
+  </div>
+
+  <!-- ======================================================= REVIEW & SEND -->
+  <div *ngIf="step === 'send' && !loading" class="grid gap-5 lg:grid-cols-5">
+    <div class="lg:col-span-3 space-y-5 min-w-0">
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">4. Review</h2></div>
+        <ul class="divide-y divide-slate-100">
+          <li *ngFor="let c of checks" class="px-5 py-3 flex items-start gap-3">
+            <span class="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                  [ngClass]="c.state === 'ok' ? 'bg-emerald-100 text-emerald-700' : c.state === 'warn' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'">
+              {{ c.state === 'ok' ? '✓' : c.state === 'warn' ? '!' : '×' }}
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-slate-900">{{ c.label }}</p>
+              <p class="text-xs text-slate-500">{{ c.detail }}</p>
+            </div>
+            <button *ngIf="c.state !== 'ok' && c.step" type="button" class="btn-ghost btn-sm shrink-0" (click)="go(c.step!)">Fix</button>
+            <a *ngIf="c.state !== 'ok' && !c.step" routerLink="/whatsapp/setup" [queryParams]="{ tenant: campaign.tenant_id }" class="btn-ghost btn-sm shrink-0">Setup</a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="font-semibold text-slate-900">Send yourself a test</h2>
+            <p class="text-xs text-slate-500 mt-0.5">The real message, filled in as the first contact on the list. Free and not counted.</p>
+          </div>
+        </div>
+        <div class="card-body flex gap-2">
+          <input class="input" [(ngModel)]="testTo" placeholder="Your WhatsApp number, e.g. 98406 24198"/>
+          <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 shrink-0" [disabled]="testing || !testTo.trim() || !campaign.template_name" (click)="sendTest()">
+            {{ testing ? 'Sending...' : 'Send test' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="card card-body space-y-2">
+        <p class="text-sm font-semibold text-slate-900">Keep the number healthy</p>
+        <ul class="list-disc pl-5 space-y-1 text-[13px] text-slate-600">
+          <li>Message people who know your business — strangers block and report, and that lowers the number's quality.</li>
+          <li>Keep a "Stop promotions" button. Anyone who presses it or replies STOP is never messaged again.</li>
+          <li>Start with your best contacts: the list goes out top to bottom.</li>
+          <li>Meta bills each marketing message — see WhatsApp Manager → Payment settings.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="lg:col-span-2 space-y-5">
+      <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900">
+        <p class="font-semibold">Safe pace for this number</p>
+        <p class="mt-1">{{ paceSentence }} — the rest wait and go out by themselves, day after day.</p>
+        <p class="mt-1 text-xs text-emerald-700">Last 24 hours: {{ campaign.pace?.last_24h || 0 }} of {{ campaign.pace?.daily_limit || 0 }} used.</p>
+        <p *ngIf="estimate" class="mt-2">{{ stats.pending | number }} contact(s) will take <strong>{{ estimate }}</strong>.</p>
+      </div>
+
+      <div *ngIf="campaign.status === 'draft' || campaign.status === 'paused'" class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">{{ campaign.status === 'paused' ? 'Resume' : 'Send' }}</h2></div>
+        <div class="card-body space-y-4">
+          <p *ngIf="campaign.status === 'paused' && campaign.status_reason"
+             class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900 whitespace-pre-line">{{ campaign.status_reason }}</p>
+          <ng-container *ngIf="campaign.status === 'draft'">
+            <label class="flex items-center gap-2.5 text-sm text-slate-700"><input type="radio" name="when" value="now" [(ngModel)]="when"/> Send now</label>
+            <label class="flex items-center gap-2.5 text-sm text-slate-700"><input type="radio" name="when" value="later" [(ngModel)]="when"/> Schedule for later</label>
+            <input *ngIf="when === 'later'" class="input" type="datetime-local" [min]="minSchedule" [(ngModel)]="scheduleAt"/>
+          </ng-container>
+          <label class="flex items-start gap-2.5 text-sm text-slate-700 rounded-lg border border-slate-200 p-3">
+            <input type="checkbox" class="mt-0.5 rounded border-slate-300" [(ngModel)]="consent"/>
+            <span>These contacts know my business and would expect to hear from us on WhatsApp.</span>
+          </label>
+          <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 w-full !py-3 !text-base"
+                  [disabled]="!canStart || !consent || acting" (click)="campaign.status === 'paused' ? resume() : askStart()">
+            {{ campaign.status === 'paused' ? 'Resume sending' : (when === 'later' ? 'Schedule campaign' : 'Start sending') }}
+          </button>
+          <p *ngIf="!canStart" class="hint text-center">Fix the items marked &times; first.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ REPORT -->
+  <div *ngIf="step === 'report' && !loading" class="space-y-5">
+    <div class="card card-body flex flex-wrap items-center justify-between gap-4">
+      <div class="min-w-0">
+        <p class="font-semibold text-slate-900">{{ statusLabels[campaign.status || 'draft'] }}</p>
+        <p class="text-sm text-slate-500">
+          {{ stats.sent | number }} of {{ stats.total | number }} sent &middot; {{ paceText }}
+          <ng-container *ngIf="campaign.status === 'sending' && estimate">&middot; {{ estimate }} to go</ng-container>
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button *ngIf="campaign.status === 'sending'" type="button" class="btn-ghost" [disabled]="acting" (click)="pause()">Pause</button>
+        <button *ngIf="campaign.status === 'paused'" type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="acting" (click)="resume()">Resume</button>
+        <button *ngIf="campaign.status === 'scheduled'" type="button" class="btn-ghost" [disabled]="acting" (click)="pause()">Unschedule</button>
+        <button *ngIf="stats.failed && (campaign.status === 'completed' || campaign.status === 'paused')" type="button" class="btn-ghost" [disabled]="acting" (click)="retryFailed()">Retry {{ stats.failed }} failed</button>
+        <button *ngIf="['sending', 'paused', 'scheduled'].includes(campaign.status || '')" type="button" class="btn-ghost !text-red-600" [disabled]="acting" (click)="confirmCancelOpen = true">Cancel</button>
+        <button type="button" class="btn-ghost" (click)="exportResults()">Export results</button>
+        <button type="button" class="btn-ghost" (click)="duplicate()">Duplicate</button>
+        <button type="button" class="btn-ghost !text-red-600" [disabled]="campaign.status === 'sending'" (click)="confirmDeleteOpen = true">Delete</button>
+      </div>
+    </div>
+
+    <div *ngIf="campaign.status_reason" class="rounded-lg px-4 py-3 text-sm whitespace-pre-line border"
+         [ngClass]="campaign.status === 'paused' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-sky-50 border-sky-200 text-sky-900'">{{ campaign.status_reason }}</div>
+    <div *ngIf="campaign.status === 'sending'" class="rounded-lg px-4 py-3 text-sm border bg-emerald-50 border-emerald-200 text-emerald-900">
+      Last 24 hours: {{ campaign.pace?.last_24h || 0 }} of {{ campaign.pace?.daily_limit || 0 }} messages from this number.
+      <ng-container *ngIf="campaign.next_send_at"> Next message {{ campaign.next_send_at | date:'EEE d MMM, h:mm a' }}.</ng-container>
+    </div>
+
+    <div class="grid gap-4 grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contacts</p><p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.total | number }}</p></div>
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Sent</p><p class="text-3xl font-bold text-emerald-600 mt-2">{{ stats.sent | number }}</p></div>
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Delivered</p><p class="text-3xl font-bold text-emerald-700 mt-2">{{ stats.delivered | number }}</p></div>
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Read</p><p class="text-3xl font-bold text-sky-600 mt-2">{{ stats.read | number }}</p></div>
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Replied</p><p class="text-3xl font-bold text-emerald-800 mt-2">{{ stats.replied | number }}</p></div>
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Failed</p><p class="text-3xl font-bold mt-2" [ngClass]="stats.failed ? 'text-red-600' : 'text-slate-900'">{{ stats.failed | number }}</p></div>
+      <div class="card card-body"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Waiting</p><p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.pending | number }}</p></div>
+    </div>
+
+    <div class="card card-body">
+      <div class="h-3 rounded-full bg-slate-100 overflow-hidden flex">
+        <div class="h-full bg-sky-500" [style.width.%]="share(stats.read)"></div>
+        <div class="h-full bg-emerald-500" [style.width.%]="share(stats.delivered - stats.read)"></div>
+        <div class="h-full bg-emerald-300" [style.width.%]="share(stats.sent - stats.delivered)"></div>
+        <div class="h-full bg-red-500" [style.width.%]="share(stats.failed)"></div>
+        <div class="h-full bg-slate-400" [style.width.%]="share(stats.skipped)"></div>
+      </div>
+      <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-500"></span>Read</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Delivered</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-300"></span>Sent</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>Failed</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-slate-400"></span>Skipped (opted out)</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h3 class="font-semibold text-slate-900">Replies <span class="font-normal text-slate-400">({{ conversations.length }})</span></h3>
+          <p class="text-xs text-slate-500 mt-0.5">You can answer freely for 24 hours after someone's last message.</p>
+        </div>
+        <button type="button" class="btn-ghost btn-sm" (click)="loadConversations()">Refresh</button>
+      </div>
+      <div *ngIf="!conversations.length" class="p-8 text-center text-sm text-slate-500">
+        No replies yet. They appear here, and in the email inbox set up in WhatsApp setup.
+      </div>
+      <div class="divide-y divide-slate-100">
+        <div *ngFor="let c of conversations">
+          <button type="button" class="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-slate-50" (click)="toggleThread(c.phone)">
+            <span class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-semibold shrink-0">
+              {{ (nameOf(c.data) || '#').charAt(0) | uppercase }}
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-slate-900 truncate">
+                {{ nameOf(c.data) || c.phone_display }}<span *ngIf="c.data['company']" class="font-normal text-slate-500"> &middot; {{ c.data['company'] }}</span>
+                <span *ngIf="c.opted_out" class="badge-warn ml-1">opted out</span>
+              </p>
+              <p class="text-xs text-slate-500 truncate">{{ lastMessage(c) }}</p>
+            </div>
+            <span class="text-xs text-slate-400 shrink-0">{{ c.last_at | date:'d MMM, h:mm a' }}</span>
+          </button>
+          <div *ngIf="openThread === c.phone" class="px-5 pb-4 bg-[#efeae2]/60">
+            <div class="pt-3 space-y-2 max-h-80 overflow-y-auto">
+              <div *ngFor="let m of c.messages" class="flex" [ngClass]="m.direction === 'out' ? 'justify-end' : 'justify-start'">
+                <div class="max-w-[80%] rounded-lg px-3 py-2 text-sm shadow-sm whitespace-pre-line"
+                     [ngClass]="m.direction === 'out' ? 'bg-[#d9fdd3] text-slate-900' : 'bg-white text-slate-900'">
+                  {{ m.body }}
+                  <span class="block text-[10px] text-slate-400 text-right mt-1">{{ m.created_at | date:'d MMM, h:mm a' }}</span>
+                </div>
+              </div>
+            </div>
+            <div *ngIf="c.can_reply" class="mt-3 flex gap-2">
+              <input class="input" [(ngModel)]="replyText[c.phone]" placeholder="Type a reply…" (keyup.enter)="sendReply(c)"/>
+              <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 shrink-0" [disabled]="replying || !(replyText[c.phone] || '').trim()" (click)="sendReply(c)">Send</button>
+            </div>
+            <p *ngIf="!c.can_reply" class="mt-3 text-xs text-slate-500">More than 24 hours since their last message — call them on {{ c.phone_display }}.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ng-container *ngTemplateOutlet="contactTable"></ng-container>
+  </div>
+
+  <!-- ======================================================== BOTTOM NAV -->
+  <div *ngIf="!loading && step !== 'report'" class="flex items-center justify-between gap-3">
+    <button type="button" class="btn-ghost" [disabled]="step === 'details'" (click)="back()">Back</button>
+    <button *ngIf="step !== 'send'" type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="saving" (click)="next()">
+      {{ step === 'details' && isNew ? (saving ? 'Creating...' : 'Create and continue') : 'Next' }}
+    </button>
+  </div>
+</div>
+
+<!-- ======================================================== PHONE PREVIEW -->
+<ng-template #phone let-b let-name="name">
+  <div class="mx-auto w-full max-w-[22rem] rounded-[2rem] bg-slate-900 p-2.5 shadow-xl">
+    <div class="rounded-[1.5rem] overflow-hidden bg-[#efeae2]">
+      <div class="bg-[#075E54] px-4 py-3 flex items-center gap-3 text-white">
+        <span class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">{{ (name || 'B').charAt(0) }}</span>
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate">{{ name || 'Your business' }}</p>
+          <p class="text-[11px] text-white/70">Business account</p>
+        </div>
+      </div>
+      <div class="px-3 py-4 min-h-[22rem]">
+        <ng-container *ngIf="b; else noTemplate">
+          <div class="max-w-[90%] rounded-lg bg-white shadow-sm overflow-hidden">
+            <div *ngIf="b.headerFormat === 'IMAGE'" class="bg-slate-200 aspect-[1.91/1] flex items-center justify-center overflow-hidden">
+              <img *ngIf="b.headerImage" [src]="b.headerImage" alt="" class="w-full h-full object-cover"/>
+              <span *ngIf="!b.headerImage" class="text-xs text-slate-500">Header picture</span>
+            </div>
+            <div *ngIf="b.headerFormat === 'VIDEO' || b.headerFormat === 'DOCUMENT'" class="bg-slate-100 px-3 py-4 text-xs text-slate-500">{{ b.headerFormat | titlecase }} in the header</div>
+            <div class="px-3 pt-2 pb-1.5">
+              <p *ngIf="b.headerText" class="text-sm font-bold text-slate-900 mb-1">{{ b.headerText }}</p>
+              <p class="text-[13.5px] leading-[1.35] text-slate-900" [innerHTML]="b.body"></p>
+              <p *ngIf="b.footer" class="mt-1.5 text-[12px] text-slate-500">{{ b.footer }}</p>
+              <p class="text-[10px] text-slate-400 text-right mt-0.5">11:02</p>
+            </div>
+          </div>
+          <div class="max-w-[90%] space-y-1 mt-1">
+            <div *ngFor="let btn of b.buttons" class="rounded-lg bg-white shadow-sm py-2 text-center text-[13px] font-medium text-[#0b8bd6] flex items-center justify-center gap-1.5">
+              <span *ngIf="btn.type === 'URL'">&#8599;</span><span *ngIf="btn.type === 'PHONE_NUMBER'">&#9990;</span><span *ngIf="btn.type === 'QUICK_REPLY'">&#8617;</span>
+              {{ btn.text }}
+            </div>
+          </div>
+        </ng-container>
+        <ng-template #noTemplate>
+          <p class="mt-20 text-center text-sm text-slate-500">Choose a template to see the message here.</p>
+        </ng-template>
+      </div>
+    </div>
+  </div>
+</ng-template>
+
+<!-- ======================================================= CONTACT TABLE -->
+<ng-template #contactTable>
+  <div class="card overflow-hidden">
+    <div class="card-head flex-wrap">
+      <h3 class="font-semibold text-slate-900">Contacts <span class="font-normal text-slate-400">({{ recipientPage.total | number }})</span></h3>
+      <div class="flex flex-wrap gap-2">
+        <select class="input !w-40 py-1.5" [(ngModel)]="recipientFilter.status" (change)="loadRecipients(false, 1)">
+          <option value="">Everyone</option>
+          <option value="pending">Waiting</option>
+          <option value="sent">Sent</option>
+          <option value="delivered">Delivered</option>
+          <option value="read">Read</option>
+          <option value="replied">Replied</option>
+          <option value="failed">Failed</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <input class="input !w-60 py-1.5" placeholder="Search number, name, company..." [(ngModel)]="recipientFilter.search" (keyup.enter)="loadRecipients(false, 1)"/>
+      </div>
+    </div>
+    <div *ngIf="recipientsLoading" class="p-6 text-sm text-slate-500">Loading...</div>
+    <div *ngIf="!recipientsLoading && !recipients.length" class="p-8 text-center text-sm text-slate-500">Nobody here yet.</div>
+    <div *ngIf="!recipientsLoading && recipients.length" class="overflow-x-auto">
+      <table class="w-full min-w-[56rem]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th">Number</th><th class="th">Name</th><th class="th">Company</th><th class="th">Status</th>
+            <th class="th">Sent</th><th class="th">Read</th><th class="th"><span class="sr-only">Remove</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr *ngFor="let r of recipients" class="hover:bg-slate-50">
+            <td class="td font-medium text-slate-900 whitespace-nowrap">{{ r.phone_display }}</td>
+            <td class="td">{{ nameOf(r.data) || '—' }}</td>
+            <td class="td">{{ r.data['company'] || '—' }}</td>
+            <td class="td">
+              <span [ngClass]="recipientClass(r.status)">{{ recipientLabels[r.status] }}</span>
+              <span *ngIf="r.replied_at" class="badge bg-emerald-100 text-emerald-800 ml-1">replied</span>
+              <p *ngIf="r.error" class="text-xs text-red-600 mt-1 max-w-xs line-clamp-2" [title]="r.error">{{ r.error }}</p>
+            </td>
+            <td class="td whitespace-nowrap text-slate-500">{{ r.sent_at ? (r.sent_at | date:'d MMM, h:mm a') : '—' }}</td>
+            <td class="td whitespace-nowrap text-slate-500">{{ r.read_at ? (r.read_at | date:'d MMM, h:mm a') : '—' }}</td>
+            <td class="td text-right whitespace-nowrap">
+              <button *ngIf="canRemove(r)" type="button" class="btn-ghost btn-sm !text-red-600" title="Take them off this campaign" (click)="recipientToRemove = r">Remove</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div *ngIf="recipientPage.pages > 1" class="px-5 py-3 border-t border-slate-200 flex items-center justify-between gap-3">
+      <p class="text-sm text-slate-500">Page {{ recipientPage.page }} of {{ recipientPage.pages }}</p>
+      <div class="flex gap-1">
+        <button type="button" class="btn-ghost btn-sm" [disabled]="recipientPage.page === 1" (click)="loadRecipients(false, recipientPage.page - 1)">Prev</button>
+        <button type="button" *ngFor="let p of recipientPages" class="btn-ghost btn-sm" [class.!bg-emerald-600]="p === recipientPage.page"
+                [class.!text-white]="p === recipientPage.page" (click)="loadRecipients(false, p)">{{ p }}</button>
+        <button type="button" class="btn-ghost btn-sm" [disabled]="recipientPage.page === recipientPage.pages" (click)="loadRecipients(false, recipientPage.page + 1)">Next</button>
+      </div>
+    </div>
+  </div>
+</ng-template>
+
+<!-- ===================================================== TEMPLATE CREATOR -->
+<div *ngIf="creatorOpen" class="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/50 overflow-y-auto" (click)="creatorOpen = false">
+  <div class="card w-full max-w-5xl my-6" (click)="$event.stopPropagation()">
+    <div class="card-head">
+      <div>
+        <h3 class="font-semibold text-slate-900">New WhatsApp template</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Meta checks every business message once. Approval usually takes a few minutes.</p>
+      </div>
+      <button type="button" class="text-slate-400 hover:text-slate-600 text-xl leading-none" (click)="creatorOpen = false">&times;</button>
+    </div>
+    <div class="card-body grid gap-6 lg:grid-cols-5">
+      <div class="lg:col-span-3 space-y-4 min-w-0">
+        <div class="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-sm text-sky-900 flex items-center justify-between gap-3">
+          <span>New to this? Start from a ready-made message and change what you like.</span>
+          <button type="button" class="btn-ghost btn-sm shrink-0" (click)="useSample()">Use the example</button>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div class="sm:col-span-1">
+            <label class="label">Name</label>
+            <input class="input font-mono text-sm" [(ngModel)]="draft.name" placeholder="smart_factory_intro"/>
+            <p class="hint">Small letters, numbers and _ only.</p>
+          </div>
+          <div>
+            <label class="label">Kind</label>
+            <select class="input" [(ngModel)]="draft.category">
+              <option value="MARKETING">Marketing</option>
+              <option value="UTILITY">Utility</option>
+            </select>
+            <p class="hint">Offers and introductions are Marketing.</p>
+          </div>
+          <div>
+            <label class="label">Language</label>
+            <select class="input" [(ngModel)]="draft.language">
+              <option *ngFor="let l of languages" [value]="l.code">{{ l.label }}</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="label">Header</label>
+          <div class="flex gap-2">
+            <button type="button" *ngFor="let f of ['NONE', 'TEXT', 'IMAGE']" class="btn-ghost btn-sm"
+                    [class.!border-emerald-500]="draft.header_format === f" [class.!text-emerald-700]="draft.header_format === f"
+                    (click)="draft.header_format = $any(f)">{{ f === 'NONE' ? 'None' : f === 'TEXT' ? 'Text' : 'Picture' }}</button>
+          </div>
+          <input *ngIf="draft.header_format === 'TEXT'" class="input mt-2" [(ngModel)]="draft.header_text" maxlength="60" placeholder="e.g. Your machines are talking"/>
+          <div *ngIf="draft.header_format === 'IMAGE'" class="mt-2 flex items-center gap-2">
+            <label class="btn-ghost cursor-pointer" [class.opacity-50]="draftImageUploading">
+              <input type="file" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" [disabled]="draftImageUploading" (change)="onDraftImage($event)"/>
+              {{ draftImageUploading ? 'Uploading…' : (draft.header_image_url ? 'Change picture' : 'Upload picture') }}
+            </label>
+            <span class="text-xs text-slate-500">{{ draft.header_image_url ? 'Picture ready.' : 'Meta needs a sample picture to approve it.' }}</span>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <label class="label">Message</label>
+            <div class="flex gap-1">
+              <button type="button" class="btn-ghost btn-sm !px-2 font-bold" title="Bold" (click)="wrap(bodyArea, '*')">B</button>
+              <button type="button" class="btn-ghost btn-sm !px-2 italic" title="Italic" (click)="wrap(bodyArea, '_')">I</button>
+              <button type="button" class="btn-ghost btn-sm" (click)="addVariable(bodyArea)">+ Variable</button>
+            </div>
+          </div>
+          <textarea #bodyArea class="input text-sm" rows="9" maxlength="1024" [(ngModel)]="draft.body"
+                    [placeholder]="bodyPlaceholder"></textarea>
+          <p class="hint">{{ draft.body.length }}/1024 · <span class="font-mono">*bold*</span>, <span class="font-mono">_italic_</span> ·
+            variables {{ slot('1') }}, {{ slot('2') }}… are filled from your list — not at the very start or end.</p>
+        </div>
+        <div *ngIf="draftVariables.length" class="rounded-lg border border-slate-200 p-3 space-y-2">
+          <p class="text-xs font-medium text-slate-600">An example for each variable — Meta needs these to approve it:</p>
+          <div *ngFor="let n of draftVariables" class="flex items-center gap-2">
+            <span class="font-mono text-xs text-slate-500 w-12">{{ slot(n) }}</span>
+            <input class="input py-1.5 text-sm" [(ngModel)]="draft.examples[n]" [placeholder]="n === '1' ? 'Ramesh' : 'Linit Exports'"/>
+          </div>
+        </div>
+        <div>
+          <label class="label">Footer <span class="font-normal text-slate-400">(optional)</span></label>
+          <input class="input" [(ngModel)]="draft.footer" maxlength="60" placeholder="e.g. Reply STOP to opt out"/>
+        </div>
+        <div>
+          <label class="label">Buttons</label>
+          <div class="space-y-2">
+            <div *ngFor="let b of draft.buttons; let i = index" class="flex items-center gap-2">
+              <span class="badge-mute shrink-0 w-24 justify-center">{{ b.type === 'QUICK_REPLY' ? 'Reply' : b.type === 'URL' ? 'Website' : 'Call' }}</span>
+              <input class="input py-1.5 text-sm" [(ngModel)]="b.text" maxlength="25" placeholder="Button text"/>
+              <input *ngIf="b.type === 'URL'" class="input py-1.5 text-sm" [(ngModel)]="b.url" placeholder="https://yoursite.com/page"/>
+              <input *ngIf="b.type === 'PHONE_NUMBER'" class="input py-1.5 text-sm" [(ngModel)]="b.phone_number" placeholder="+919840624198"/>
+              <button type="button" class="text-slate-400 hover:text-red-600 text-lg leading-none shrink-0" (click)="draft.buttons.splice(i, 1)">&times;</button>
+            </div>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button type="button" class="btn-ghost btn-sm" (click)="addButton('QUICK_REPLY')">+ Reply button</button>
+            <button type="button" class="btn-ghost btn-sm" [disabled]="hasButton('URL')" (click)="addButton('URL')">+ Website</button>
+            <button type="button" class="btn-ghost btn-sm" [disabled]="hasButton('PHONE_NUMBER')" (click)="addButton('PHONE_NUMBER')">+ Call</button>
+          </div>
+          <p class="hint">Keep "Stop promotions": anyone who presses it is never messaged again — far better than a report.</p>
+        </div>
+      </div>
+      <div class="lg:col-span-2">
+        <div class="lg:sticky lg:top-4">
+          <p class="text-sm font-semibold text-slate-900 mb-2">How it will look</p>
+          <ng-container *ngTemplateOutlet="phone; context: { $implicit: draftBubble, name: account?.tenant_name }"></ng-container>
+        </div>
+      </div>
+    </div>
+    <div class="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
+      <button type="button" class="btn-ghost" (click)="creatorOpen = false">Cancel</button>
+      <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="creating || !draft.body.trim() || !draft.name.trim()" (click)="submitTemplate()">
+        {{ creating ? 'Sending to Meta...' : 'Submit for approval' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================== CONFIRMATIONS -->
+<div *ngIf="confirmStartOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50" (click)="confirmStartOpen = false">
+  <div class="card w-full max-w-md" (click)="$event.stopPropagation()">
+    <div class="card-body">
+      <h3 class="text-lg font-semibold text-slate-900">{{ when === 'later' ? 'Schedule this campaign?' : 'Start sending now?' }}</h3>
+      <p class="mt-2 text-sm text-slate-600">
+        <span class="font-semibold">{{ stats.pending | number }}</span> contact(s) will get the template
+        "<span class="font-mono">{{ campaign.template_name }}</span>" from <span class="font-semibold">{{ account?.display_phone || account?.tenant_name }}</span>
+        <ng-container *ngIf="when === 'later'"> from {{ scheduleAt | date:'EEEE d MMM, h:mm a' }}</ng-container>.
+      </p>
+      <p class="mt-2 text-sm text-slate-500">At {{ paceText }}, this takes {{ estimate }}. You can pause at any time.</p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button type="button" class="btn-ghost" (click)="confirmStartOpen = false">Not yet</button>
+        <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="acting" (click)="start()">
+          {{ acting ? 'Starting...' : (when === 'later' ? 'Schedule' : 'Send now') }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<app-confirm [open]="!!recipientToRemove" title="Remove from this campaign?" confirmLabel="Remove"
+             [message]="(recipientToRemove?.phone_display || '') + ' will not get this message.\n\nTo never message them from any campaign, add them to the Do-not-message list instead.'"
+             (confirmed)="removeRecipient()" (cancelled)="recipientToRemove = null"></app-confirm>
+
+<app-confirm [open]="confirmClearOpen" title="Clear the contact list?" confirmLabel="Clear list"
+             message="Every contact is removed from this campaign. You can upload a new list straight after."
+             (confirmed)="clearList()" (cancelled)="confirmClearOpen = false"></app-confirm>
+
+<app-confirm [open]="confirmCancelOpen" title="Cancel this campaign?" confirmLabel="Cancel campaign"
+             [message]="'Nothing more will be sent. ' + stats.pending + ' waiting message(s) will never go out.\n\nTo stop only for a while, use Pause instead.'"
+             (confirmed)="cancelCampaign()" (cancelled)="confirmCancelOpen = false"></app-confirm>
+
+<app-confirm [open]="confirmDeleteOpen" title="Delete this campaign?"
+             message="The template choice, the contact list, the replies and the report are deleted. Numbers on the do-not-message list stay. This cannot be undone."
+             (confirmed)="remove()" (cancelled)="confirmDeleteOpen = false"></app-confirm>

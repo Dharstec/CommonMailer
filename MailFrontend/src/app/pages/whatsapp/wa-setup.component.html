@@ -1,0 +1,298 @@
+<div class="max-w-6xl mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <a routerLink="/whatsapp" class="text-slate-400 hover:text-slate-600" title="Back to WhatsApp campaigns">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">WhatsApp setup</h1>
+        <p class="text-sm text-slate-500 mt-1">Connect a customer's WhatsApp number once. Every step says where to click.</p>
+      </div>
+    </div>
+    <div class="w-full sm:w-72">
+      <label class="label">Customer</label>
+      <select class="input" [ngModel]="tenantId" (ngModelChange)="choose($event)">
+        <option *ngFor="let a of accounts" [ngValue]="a.tenant_id">{{ a.tenant_name }}{{ a.connected ? ' — connected' : '' }}</option>
+      </select>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="text-sm text-slate-500">Loading...</div>
+
+  <!-- ============================================== CONNECTED: OVERVIEW -->
+  <ng-container *ngIf="!loading && detail?.connected && !editing">
+    <div class="card overflow-hidden">
+      <div class="px-6 py-6 bg-gradient-to-br from-emerald-50 via-white to-white flex flex-wrap items-center gap-5">
+        <span class="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.87 9.87 0 004.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2z"/></svg>
+        </span>
+        <div class="min-w-0">
+          <p class="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Connected</p>
+          <p class="text-2xl font-bold text-slate-900">{{ account?.display_phone || 'Number not checked yet' }}</p>
+          <p class="text-sm text-slate-500">{{ account?.verified_name || detail?.tenant_name }}</p>
+        </div>
+        <div class="ml-auto flex flex-wrap gap-2">
+          <button type="button" class="btn-ghost" [disabled]="checking" (click)="check()">{{ checking ? 'Checking...' : 'Check again' }}</button>
+          <button type="button" class="btn-ghost" (click)="edit(1)">Edit connection</button>
+          <button type="button" class="btn-ghost !text-red-600" (click)="confirmDisconnect = true">Disconnect</button>
+        </div>
+      </div>
+      <div class="grid gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-4 border-t border-slate-200">
+        <div class="bg-white p-5">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Quality (Meta)</p>
+          <p class="mt-2"><span [ngClass]="qualityOf(account?.quality_rating || null).css">{{ qualityOf(account?.quality_rating || null).label }}</span></p>
+          <p class="text-xs text-slate-500 mt-2">Falls when people block or report you. Low pauses every campaign.</p>
+        </div>
+        <div class="bg-white p-5">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Meta's daily limit</p>
+          <p class="text-2xl font-bold text-slate-900 mt-1">{{ limitOf(account?.messaging_limit) }}</p>
+          <p class="text-xs text-slate-500 mt-1">New people a day Meta allows this number.</p>
+        </div>
+        <div class="bg-white p-5">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Our safe pace</p>
+          <p class="text-2xl font-bold text-slate-900 mt-1">{{ detail?.pace?.daily_limit }} a day</p>
+          <p class="text-xs text-slate-500 mt-1">One every {{ detail?.pace?.gap_minutes }} min · {{ detail?.pace?.last_24h }} sent in the last 24 h.</p>
+        </div>
+        <div class="bg-white p-5">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Replies &amp; receipts</p>
+          <p class="mt-2" *ngIf="account?.webhook_seen_at"><span class="badge-ok">Webhook working</span></p>
+          <p class="mt-2" *ngIf="!account?.webhook_seen_at"><span class="badge-warn">Webhook not set up</span></p>
+          <p class="text-xs text-slate-500 mt-2" *ngIf="!account?.webhook_seen_at">
+            <button type="button" class="text-emerald-700 font-medium hover:underline" (click)="edit(5)">Finish step 6</button> to see replies.
+          </p>
+          <p class="text-xs text-slate-500 mt-2" *ngIf="account?.webhook_seen_at">Last call {{ account?.webhook_seen_at | date:'d MMM, h:mm a' }}.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="card">
+        <div class="card-head"><h2 class="font-semibold text-slate-900">Send a test</h2></div>
+        <div class="card-body space-y-3">
+          <p class="text-sm text-slate-600">Meta's ready-made <span class="font-mono text-xs">hello_world</span> message, to your own WhatsApp.</p>
+          <div class="flex gap-2">
+            <input class="input" [(ngModel)]="testTo" placeholder="Your WhatsApp number, e.g. 98406 24198"/>
+            <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 shrink-0" [disabled]="testing || !testTo.trim()" (click)="sendTest()">
+              {{ testing ? 'Sending...' : 'Send test' }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="card card-body space-y-2">
+        <p class="text-sm font-semibold text-slate-900">Keep the number healthy</p>
+        <ul class="list-disc pl-5 space-y-1 text-[13px] text-slate-600">
+          <li>Message people who know your business — strangers block and report.</li>
+          <li>Always keep a "Stop promotions" button; it costs less than a report.</li>
+          <li>Reply fast: for 24 hours after someone writes, you can answer freely.</li>
+          <li>Replies are emailed to {{ account?.notify_emails || 'nobody yet — add addresses in step 5' }}.</li>
+          <li>Meta bills each marketing message: add a payment method in WhatsApp Manager → Payment settings.</li>
+        </ul>
+        <a routerLink="/whatsapp/new" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 w-full mt-3">Create a WhatsApp campaign</a>
+      </div>
+    </div>
+  </ng-container>
+
+  <!-- ========================================================= THE GUIDE -->
+  <div *ngIf="!loading && tenantId && editing" class="grid gap-5 lg:grid-cols-[16rem_1fr]">
+
+    <nav class="card card-body h-fit">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">7 steps · about 20 minutes</p>
+      <ol class="space-y-1">
+        <li *ngFor="let s of steps; let i = index">
+          <button type="button" class="w-full flex items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition"
+                  [ngClass]="i === step ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'"
+                  (click)="step = i">
+            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                  [ngClass]="i < step ? 'bg-emerald-600 text-white' : i === step ? 'bg-white ring-2 ring-emerald-600 text-emerald-700' : 'bg-slate-100 text-slate-500'">
+              <ng-container *ngIf="i < step">&#10003;</ng-container><ng-container *ngIf="i >= step">{{ i + 1 }}</ng-container>
+            </span>
+            {{ s }}
+          </button>
+        </li>
+      </ol>
+    </nav>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <p class="text-xs font-semibold text-emerald-700">STEP {{ step + 1 }} OF {{ steps.length }}</p>
+          <h2 class="text-lg font-semibold text-slate-900">{{ steps[step] }}</h2>
+        </div>
+      </div>
+
+      <div class="card-body space-y-5 text-sm text-slate-700">
+
+        <!-- 1 -->
+        <ng-container *ngIf="step === 0">
+          <p>WhatsApp campaigns go through <strong>Meta's official WhatsApp Business Platform</strong> — the only way to message many people
+            without the number being banned. You need:</p>
+          <ul class="space-y-3">
+            <li class="flex gap-3"><span class="text-emerald-600 font-bold">1</span>
+              <span><strong>A mobile number that is not on WhatsApp right now.</strong> A new SIM is easiest. A number already on the
+                WhatsApp or WhatsApp Business app must be deleted from the app first — it cannot be in both places.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-600 font-bold">2</span>
+              <span><strong>A Facebook login</strong> to create a free Meta business account and app.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-600 font-bold">3</span>
+              <span><strong>A payment card</strong>, added later in WhatsApp Manager. Meta charges a small fee per marketing message;
+                replies within 24 hours are free.</span></li>
+          </ul>
+          <p class="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-sky-900">
+            Just trying it? Skip the number for now: Meta gives every new app a <strong>free test number</strong> that can message up to five
+            phones you add on the API Setup page.
+          </p>
+        </ng-container>
+
+        <!-- 2 -->
+        <ng-container *ngIf="step === 1">
+          <ol class="list-decimal pl-5 space-y-2">
+            <li>Open <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener" class="text-emerald-700 font-medium underline">developers.facebook.com/apps</a> and log in.</li>
+            <li><strong>Create app</strong> → choose the use case <strong>"Connect with customers through WhatsApp"</strong> (or type
+              <strong>Business</strong>) → give it a name like "Dharstec WhatsApp" → pick or create your business portfolio.</li>
+            <li>In the app, open <strong>WhatsApp → API Setup</strong>. Add your number under <strong>"Add phone number"</strong> and confirm the
+              code Meta sends — or keep the test number for now.</li>
+            <li>On the same page, copy the two long numbers below the phone number:</li>
+          </ol>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label">Phone number ID</label>
+              <input class="input font-mono" [(ngModel)]="form.phone_number_id" placeholder="e.g. 106540352242922" inputmode="numeric"/>
+            </div>
+            <div>
+              <label class="label">WhatsApp Business Account ID</label>
+              <input class="input font-mono" [(ngModel)]="form.waba_id" placeholder="e.g. 102290129340398" inputmode="numeric"/>
+            </div>
+          </div>
+        </ng-container>
+
+        <!-- 3 -->
+        <ng-container *ngIf="step === 2">
+          <p>The token on the API Setup page stops working after 24 hours. Make one that never expires:</p>
+          <ol class="list-decimal pl-5 space-y-2">
+            <li>Open <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" class="text-emerald-700 font-medium underline">business.facebook.com → Settings → Users → System users</a>
+              → <strong>Add</strong> → name it "CommonMailer", role <strong>Admin</strong>.</li>
+            <li><strong>Assign assets</strong>: your <strong>app</strong> with Full control, and your <strong>WhatsApp account</strong> with Full control.</li>
+            <li><strong>Generate new token</strong> → choose the app → expiry <strong>Never</strong> → tick
+              <span class="font-mono text-xs">whatsapp_business_messaging</span> and <span class="font-mono text-xs">whatsapp_business_management</span>
+              → Generate → copy it.</li>
+          </ol>
+          <div>
+            <label class="label">Access token</label>
+            <input class="input font-mono text-xs" type="password" autocomplete="off" [(ngModel)]="form.access_token"
+                   [placeholder]="account?.has_token ? 'Saved — leave empty to keep it' : 'Starts with EAA…'"/>
+            <p class="hint">Stored encrypted. It never comes back to the browser.</p>
+          </div>
+        </ng-container>
+
+        <!-- 4 -->
+        <ng-container *ngIf="step === 3">
+          <ol class="list-decimal pl-5 space-y-2">
+            <li>Back on <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener" class="text-emerald-700 font-medium underline">developers.facebook.com/apps</a>,
+              open your app → <strong>App settings → Basic</strong>.</li>
+            <li>Copy the <strong>App ID</strong> at the top, and the <strong>App secret</strong> (press Show).</li>
+          </ol>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label">App ID</label>
+              <input class="input font-mono" [(ngModel)]="form.app_id" placeholder="e.g. 1234567890123456" inputmode="numeric"/>
+              <p class="hint">Needed to create templates with a picture.</p>
+            </div>
+            <div>
+              <label class="label">App secret</label>
+              <input class="input font-mono text-xs" type="password" autocomplete="off" [(ngModel)]="form.app_secret"
+                     [placeholder]="account?.has_app_secret ? 'Saved — leave empty to keep it' : '32 letters and numbers'"/>
+              <p class="hint">Proves replies really come from Meta, so nobody can fake one.</p>
+            </div>
+          </div>
+        </ng-container>
+
+        <!-- 5 -->
+        <ng-container *ngIf="step === 4">
+          <div class="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <div>
+              <label class="label">Country code</label>
+              <input class="input font-mono" [(ngModel)]="form.default_country" maxlength="3" inputmode="numeric"/>
+              <p class="hint">Added to numbers written without one. 91 is India.</p>
+            </div>
+            <div>
+              <label class="label">Email every reply to</label>
+              <input class="input" [(ngModel)]="form.notify_emails" placeholder="sales@yourcompany.com, you@yourcompany.com"/>
+              <p class="hint">Up to five addresses, through this customer's own mailbox — so nobody misses a reply.</p>
+            </div>
+          </div>
+          <div *ngIf="saveCheck" class="rounded-lg px-3 py-2 border whitespace-pre-line"
+               [ngClass]="saveCheck.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-800'">
+            <ng-container *ngIf="saveCheck.ok">Meta knows this number: <strong>{{ saveCheck.info?.display_phone }}</strong> ({{ saveCheck.info?.verified_name }}).</ng-container>
+            <ng-container *ngIf="!saveCheck.ok">{{ saveCheck.message }}</ng-container>
+          </div>
+          <p class="text-slate-500">Saving asks Meta about the number straight away, so a wrong ID or token shows now rather than mid-campaign.</p>
+        </ng-container>
+
+        <!-- 6 -->
+        <ng-container *ngIf="step === 5">
+          <p>Meta sends <strong>replies and delivery receipts</strong> to this address. Without it campaigns still send, but you never see who replied.</p>
+          <ol class="list-decimal pl-5 space-y-2">
+            <li>In your app open <strong>WhatsApp → Configuration</strong> → under Webhook press <strong>Edit</strong>.</li>
+            <li>Paste these two values, then <strong>Verify and save</strong>:</li>
+          </ol>
+          <div class="space-y-3" *ngIf="detail?.webhook; else saveFirst">
+            <div>
+              <label class="label">Callback URL</label>
+              <div class="flex gap-2">
+                <input class="input font-mono text-xs" readonly [value]="detail?.webhook?.url"/>
+                <button type="button" class="btn-ghost shrink-0" (click)="copy(detail?.webhook?.url, 'Callback URL')">Copy</button>
+              </div>
+            </div>
+            <div>
+              <label class="label">Verify token</label>
+              <div class="flex gap-2">
+                <input class="input font-mono text-xs" readonly [value]="detail?.webhook?.verify_token"/>
+                <button type="button" class="btn-ghost shrink-0" (click)="copy(detail?.webhook?.verify_token, 'Verify token')">Copy</button>
+              </div>
+            </div>
+          </div>
+          <ng-template #saveFirst><p class="text-amber-700">Save step 5 first — the verify token is made then.</p></ng-template>
+          <ol class="list-decimal pl-5 space-y-2" start="3">
+            <li>Under <strong>Webhook fields</strong>, find <strong>messages</strong> and press <strong>Subscribe</strong>.</li>
+          </ol>
+          <div class="rounded-lg px-3 py-2 border flex items-center gap-2"
+               [ngClass]="account?.webhook_seen_at ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-600'">
+            <span *ngIf="!account?.webhook_seen_at" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            <ng-container *ngIf="account?.webhook_seen_at">&#10003; Meta reached the webhook. Replies will come in.</ng-container>
+            <ng-container *ngIf="!account?.webhook_seen_at">Waiting for Meta's first call… this page notices by itself.</ng-container>
+          </div>
+        </ng-container>
+
+        <!-- 7 -->
+        <ng-container *ngIf="step === 6">
+          <p>Meta's ready-made <span class="font-mono text-xs">hello_world</span> message to your own WhatsApp proves the whole chain works.</p>
+          <div class="flex gap-2 max-w-lg">
+            <input class="input" [(ngModel)]="testTo" placeholder="Your WhatsApp number, e.g. 98406 24198"/>
+            <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 shrink-0" [disabled]="testing || !testTo.trim()" (click)="sendTest()">
+              {{ testing ? 'Sending...' : 'Send test' }}
+            </button>
+          </div>
+          <p class="text-slate-500">With Meta's test number, first add your phone under <strong>"To"</strong> on the API Setup page.</p>
+          <p class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-900">
+            Before messaging customers, add a payment method in <strong>WhatsApp Manager → Payment settings</strong>.
+          </p>
+        </ng-container>
+      </div>
+
+      <div class="px-5 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
+        <button type="button" class="btn-ghost" [disabled]="step === 0" (click)="back()">Back</button>
+        <div class="flex gap-2">
+          <button *ngIf="detail?.connected && step < 6" type="button" class="btn-ghost" (click)="finish()">Close guide</button>
+          <button *ngIf="step < 6" type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="!stepReady || saving" (click)="next()">
+            {{ step === 4 ? (saving ? 'Saving...' : 'Save and check') : 'Next' }}
+          </button>
+          <button *ngIf="step === 6" type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" (click)="finish()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<app-confirm [open]="confirmDisconnect" title="Disconnect WhatsApp?" confirmLabel="Disconnect"
+             message="The saved IDs, token and secret are deleted. Campaigns stay, but cannot send until the number is connected again."
+             (confirmed)="disconnect()" (cancelled)="confirmDisconnect = false"></app-confirm>
