@@ -1003,7 +1003,8 @@
             <td class="td whitespace-nowrap text-slate-500">{{ r.sent_at ? (r.sent_at | date:'d MMM, h:mm a') : '—' }}</td>
             <td class="td whitespace-nowrap">
               {{ r.opened_at ? (r.opened_at | date:'d MMM, h:mm a') : '—' }}
-              <span *ngIf="r.open_count > 1" class="text-xs text-slate-400">&times;{{ r.open_count }}</span>
+              <span *ngIf="r.open_count > 1" class="block text-xs text-slate-500"
+                    title="The time above is the first open">opened {{ r.open_count }} times</span>
             </td>
             <td class="td text-right whitespace-nowrap">
               <button *ngIf="canRemove(r)" type="button" class="btn-ghost btn-sm !text-red-600"
