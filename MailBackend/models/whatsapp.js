@@ -16,6 +16,7 @@ const { encrypt } = require('../helpers/crypto');
 const whatsapp = require('../helpers/whatsapp');
 const { pace } = require('../helpers/whatsappWorker');
 const images = require('../helpers/images');
+const sendWindow = require('../helpers/sendWindow');
 const { parsePhoneList } = require('../helpers/campaignCsv');
 const { normalisePhone, formatPhone } = require('../helpers/phone');
 const { baseUrl } = require('../helpers/links');
@@ -400,7 +401,8 @@ function campaignColumns(body) {
         template_format: body.template_format || null,
         template_components: body.template_components ? JSON.stringify(body.template_components) : null,
         variables: JSON.stringify(body.variables || {}),
-        header_media_url: body.header_media_url || null
+        header_media_url: body.header_media_url || null,
+        send_window: body.send_window ? JSON.stringify(body.send_window) : null
     };
 }
 
@@ -512,9 +514,9 @@ const duplicate = async (req, res) => {
         if (!id || !await loadCampaign(id)) return notFound(res);
         const rows = await POSTGRESQLService.PostgresAny(
             `INSERT INTO wa_campaigns (tenant_id, name, template_name, template_language, template_category,
-                                       template_components, template_format, variables, header_media_url)
+                                       template_components, template_format, variables, header_media_url, send_window)
              SELECT tenant_id, left(name || ' (copy)', 150), template_name, template_language, template_category,
-                    template_components, template_format, variables, header_media_url
+                    template_components, template_format, variables, header_media_url, send_window
                FROM wa_campaigns WHERE id = $1
              RETURNING *`,
             [id]
@@ -813,7 +815,8 @@ const start = async (req, res) => {
         logger.info(scheduledAt ? 'WhatsApp campaign scheduled' : 'WhatsApp campaign started', { id, contacts: stats.pending, by: req.email });
         res.json({
             status: 'success',
-            message: scheduledAt ? 'Campaign scheduled.' : `Sending to ${stats.pending} contact(s) has started — ${pace.describe()} from this number.`
+            message: scheduledAt ? 'Campaign scheduled.' : `Sending to ${stats.pending} contact(s) has started — ${pace.describe()} from this number`
+                + `${row.send_window ? `, ${sendWindow.describe(row.send_window)}` : ''}.`
         });
     } catch (error) {
         handleServerError(res, error, 'whatsapp.start');
@@ -882,6 +885,38 @@ const retryFailed = async (req, res) => {
         res.json({ status: 'success', message: `${reset.length} message(s) queued again.${row.status === 'paused' ? ' Resume the campaign to send them.' : ''}` });
     } catch (error) {
         handleServerError(res, error, 'whatsapp.retryFailed');
+    }
+};
+
+/**
+ * Sending hours can change at any time, even mid-send: they only decide when
+ * the next turn is, never how many go out. A sending campaign looks again at once.
+ */
+const setSendWindow = async (req, res) => {
+    try {
+        const id = idParam(req.params.id);
+        const row = id && await loadCampaign(id);
+        if (!row) return notFound(res);
+        if (!['draft', 'scheduled', 'sending', 'paused'].includes(row.status)) {
+            return res.status(409).json({ status: 'error', message: 'A finished campaign has no sending hours to change.' });
+        }
+        const window = req.body.send_window;
+        const rows = await POSTGRESQLService.PostgresAny(
+            `UPDATE wa_campaigns
+                SET send_window = $2, updated_at = now(),
+                    next_send_at = CASE WHEN status = 'sending' THEN now() ELSE next_send_at END
+              WHERE id = $1
+            RETURNING send_window`,
+            [id, window ? JSON.stringify(window) : null]
+        );
+        logger.info('Sending hours changed', { id, window: sendWindow.describe(window), by: req.email });
+        res.json({
+            status: 'success',
+            message: window ? `Sending hours set: ${sendWindow.describe(window)}.` : 'Sends at any time now.',
+            data: rows[0]
+        });
+    } catch (error) {
+        handleServerError(res, error, 'whatsapp.setSendWindow');
     }
 };
 
@@ -1004,7 +1039,7 @@ module.exports = {
     listTemplates, createTemplate,
     getAll, getOne, create, update, remove, duplicate,
     uploadRecipients, listRecipients, removeRecipient, clearRecipients, exportRecipients,
-    sendTest, start, pause, cancel, retryFailed,
+    sendTest, start, pause, cancel, retryFailed, setSendWindow,
     conversations, reply,
     listOptouts, addOptouts, removeOptout
 };

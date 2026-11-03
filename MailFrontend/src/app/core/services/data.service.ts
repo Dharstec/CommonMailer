@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 import {
-  ApiResponse, Campaign, CampaignAttachment, CampaignPreview, CampaignRecipient, CampaignUnsubscribe,
+  ApiResponse, Campaign, CampaignAttachment, SendWindow, CampaignPreview, CampaignRecipient, CampaignUnsubscribe,
   ContactForm, DashboardStats, EmailTemplate, ImportSummary, Submission, Tenant, TenantSmtp,
   WaAccountDetail, WaAccountForm, WaAccountSummary, WaCampaign, WaConversation, WaImportSummary, WaNumberInfo,
   WaOptout, WaRecipient, WaTemplate, WaTemplateDraft
@@ -123,6 +123,9 @@ export class CampaignService {
   pause(id: number): Observable<ApiResponse<null>> { return this.api.post(`campaigns/${id}/pause`, {}); }
   cancel(id: number): Observable<ApiResponse<null>> { return this.api.post(`campaigns/${id}/cancel`, {}); }
   retryFailed(id: number): Observable<ApiResponse<null>> { return this.api.post(`campaigns/${id}/retry-failed`, {}); }
+  setSendWindow(id: number, window: SendWindow | null): Observable<ApiResponse<{ send_window: SendWindow | null }>> {
+    return this.api.put(`campaigns/${id}/send-window`, { send_window: window });
+  }
 
   unsubscribes(tenantId: number): Observable<CampaignUnsubscribe[]> {
     return this.api.get<CampaignUnsubscribe[]>('campaigns/unsubscribes', { tenant_id: tenantId });
@@ -180,6 +183,9 @@ export class WhatsappService {
   pause(id: number): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/pause`, {}); }
   cancel(id: number): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/cancel`, {}); }
   retryFailed(id: number): Observable<ApiResponse<null>> { return this.api.post(`wa-campaigns/${id}/retry-failed`, {}); }
+  setSendWindow(id: number, window: SendWindow | null): Observable<ApiResponse<{ send_window: SendWindow | null }>> {
+    return this.api.put(`wa-campaigns/${id}/send-window`, { send_window: window });
+  }
 
   conversations(id: number): Observable<WaConversation[]> { return this.api.get<WaConversation[]>(`wa-campaigns/${id}/conversations`); }
   reply(id: number, phone: string, text: string): Observable<ApiResponse<null>> {

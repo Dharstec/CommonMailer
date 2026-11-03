@@ -317,6 +317,10 @@
         <p *ngIf="estimate" class="mt-2">{{ stats.pending | number }} contact(s) will take <strong>{{ estimate }}</strong>.</p>
       </div>
 
+      <div class="card card-body">
+        <app-send-window [(value)]="campaign.send_window" (valueChange)="changed()" [disabled]="!canEdit"></app-send-window>
+      </div>
+
       <div *ngIf="campaign.status === 'draft' || campaign.status === 'paused'" class="card">
         <div class="card-head"><h2 class="font-semibold text-slate-900">{{ campaign.status === 'paused' ? 'Resume' : 'Send' }}</h2></div>
         <div class="card-body space-y-4">
@@ -368,6 +372,22 @@
     <div *ngIf="campaign.status === 'sending'" class="rounded-lg px-4 py-3 text-sm border bg-emerald-50 border-emerald-200 text-emerald-900">
       Last 24 hours: {{ campaign.pace?.last_24h || 0 }} of {{ campaign.pace?.daily_limit || 0 }} messages from this number.
       <ng-container *ngIf="campaign.next_send_at"> Next message {{ campaign.next_send_at | date:'EEE d MMM, h:mm a' }}.</ng-container>
+    </div>
+
+    <div *ngIf="['sending', 'paused', 'scheduled'].includes(campaign.status || '')" class="card card-body space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm text-slate-700">Sending hours: <strong>{{ describeWindow(campaign.send_window) }}</strong></p>
+        <button type="button" class="btn-ghost btn-sm" (click)="openHours()">{{ hoursOpen ? 'Close' : 'Change' }}</button>
+      </div>
+      <div *ngIf="hoursOpen" class="space-y-3 border-t border-slate-100 pt-3">
+        <app-send-window [(value)]="hoursDraft"></app-send-window>
+        <div class="flex justify-end">
+          <button type="button" class="btn-primary btn-sm !bg-emerald-600 hover:!bg-emerald-700"
+                  [disabled]="savingHours || (!!hoursDraft && hoursDraft.start >= hoursDraft.end)" (click)="saveHours()">
+            {{ savingHours ? 'Saving...' : 'Save hours' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="grid gap-4 grid-cols-2 md:grid-cols-4 xl:grid-cols-7">

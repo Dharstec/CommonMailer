@@ -23,6 +23,7 @@ const { baseUrl } = require('../helpers/links');
 const { explainSmtpError } = require('../helpers/smtpErrors');
 const campaignPace = require('../helpers/campaignPace');
 const images = require('../helpers/images');
+const sendWindow = require('../helpers/sendWindow');
 const logger = require('../helpers/logger');
 
 const handleServerError = (res, error, where) => {
@@ -111,7 +112,8 @@ function campaignColumns(body) {
         design: body.design,
         content: JSON.stringify(body.content || {}),
         custom_html: body.custom_html || null,
-        track_opens: body.track_opens
+        track_opens: body.track_opens,
+        send_window: body.send_window ? JSON.stringify(body.send_window) : null
     };
 }
 
@@ -351,9 +353,9 @@ const duplicate = async (req, res) => {
         const copy = await POSTGRESQLService.PostgresTransaction(async (client) => {
             const inserted = await client.query(
                 `INSERT INTO campaigns (tenant_id, name, from_name, from_email, reply_to, subject, preheader,
-                                        design, content, custom_html, track_opens)
+                                        design, content, custom_html, track_opens, send_window)
                  SELECT tenant_id, left(name || ' (copy)', 150), from_name, from_email, reply_to, subject, preheader,
-                        design, content, custom_html, track_opens
+                        design, content, custom_html, track_opens, send_window
                    FROM campaigns WHERE id = $1
                  RETURNING *`,
                 [id]
@@ -862,6 +864,38 @@ const sendTest = async (req, res) => {
     }
 };
 
+/**
+ * Sending hours can change at any time, even mid-send: they only decide when
+ * the next turn is, never how many go out. A sending campaign looks again at once.
+ */
+const setSendWindow = async (req, res) => {
+    try {
+        const id = idParam(req.params.id);
+        const row = id && await loadCampaign(id);
+        if (!row) return notFound(res);
+        if (!['draft', 'scheduled', 'sending', 'paused'].includes(row.status)) {
+            return res.status(409).json({ status: 'error', message: 'A finished campaign has no sending hours to change.' });
+        }
+        const window = req.body.send_window;
+        const rows = await POSTGRESQLService.PostgresAny(
+            `UPDATE campaigns
+                SET send_window = $2, updated_at = now(),
+                    next_send_at = CASE WHEN status = 'sending' THEN now() ELSE next_send_at END
+              WHERE id = $1
+            RETURNING send_window`,
+            [id, window ? JSON.stringify(window) : null]
+        );
+        logger.info('Sending hours changed', { id, window: sendWindow.describe(window), by: req.email });
+        res.json({
+            status: 'success',
+            message: window ? `Sending hours set: ${sendWindow.describe(window)}.` : 'Sends at any time now.',
+            data: rows[0]
+        });
+    } catch (error) {
+        handleServerError(res, error, 'campaign.setSendWindow');
+    }
+};
+
 // --------------------------------------------------------------- actions --
 
 /** Starts, resumes, or schedules. Everything that would make the send pointless is checked first. */
@@ -948,7 +982,8 @@ const start = async (req, res) => {
             status: 'success',
             message: scheduledAt
                 ? 'Campaign scheduled.'
-                : `Sending to ${stats.pending} recipient(s) has started — ${campaignPace.describe()} from this mailbox.`
+                : `Sending to ${stats.pending} recipient(s) has started — ${campaignPace.describe()} from this mailbox`
+                    + `${row.send_window ? `, ${sendWindow.describe(row.send_window)}` : ''}.`
         });
     } catch (error) {
         handleServerError(res, error, 'campaign.start');
@@ -1127,6 +1162,6 @@ module.exports = {
     uploadRecipients, listRecipients, exportRecipients, clearRecipients, removeRecipient,
     uploadAttachment, removeAttachment, uploadImage,
     preview, sendTest,
-    start, pause, cancel, retryFailed,
+    start, pause, cancel, retryFailed, setSendWindow,
     listUnsubscribes, addUnsubscribes, removeUnsubscribe
 };

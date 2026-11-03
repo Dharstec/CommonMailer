@@ -9,10 +9,11 @@ import { ClipboardService } from '../../core/services/clipboard.service';
 import { ToastService } from '../../core/services/toast.service';
 import {
   ApiResponse, Campaign, CampaignAttachment, CampaignContent, CampaignDesign, CampaignPace, CampaignPreview,
-  CampaignRecipient, CampaignSender, CampaignStats, ImportSummary, Pagination, Tenant
+  CampaignRecipient, CampaignSender, CampaignStats, ImportSummary, Pagination, SendWindow, Tenant
 } from '../../core/models';
 import { STATUS_LABELS, campaignStatusClass } from './campaign-list.component';
 import { EmailImage, EmailImageKind, luminanceOf, prepareEmailImage } from './email-image';
+import { defaultWindow, describeWindow } from '../../shared/send-window.component';
 
 type Tab = 'details' | 'recipients' | 'content' | 'send' | 'report';
 type TextField = 'subject' | 'preheader' | 'headline' | 'body' | 'cta_text' | 'cta_url' | 'signature'
@@ -134,7 +135,8 @@ function blankCampaign(): Campaign {
     design: 'executive',
     content: { ...STARTER },
     custom_html: '',
-    track_opens: true
+    track_opens: true,
+    send_window: defaultWindow()
   };
 }
 
@@ -172,6 +174,9 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
   importRejected = false;
   confirmClearOpen = false;
   recipientToRemove: CampaignRecipient | null = null;
+  hoursOpen = false;
+  hoursDraft: SendWindow | null = null;
+  savingHours = false;
 
   // Content
   preview: CampaignPreview | null = null;
@@ -426,7 +431,8 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
         logo_width: Number.isFinite(width) && width > 0 ? Math.min(300, Math.max(40, Math.round(width))) : null
       },
       custom_html: c.custom_html || null,
-      track_opens: c.track_opens
+      track_opens: c.track_opens,
+      send_window: c.send_window ?? null
     };
   }
 
@@ -648,6 +654,29 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
         this.schedulePreview();
       },
       error: () => { this.confirmClearOpen = false; }
+    });
+  }
+
+  readonly describeWindow = describeWindow;
+
+  /** Sending hours change at any time, even mid-send — the next turn is worked out again. */
+  openHours(): void {
+    this.hoursDraft = this.campaign.send_window ? { ...this.campaign.send_window } : defaultWindow();
+    this.hoursOpen = !this.hoursOpen;
+  }
+
+  saveHours(): void {
+    if (!this.campaignId) return;
+    this.savingHours = true;
+    this.service.setSendWindow(this.campaignId, this.hoursDraft).subscribe({
+      next: (res) => {
+        this.savingHours = false;
+        this.hoursOpen = false;
+        this.campaign.send_window = res.data.send_window;
+        this.toast.success(res.message || 'Saved.');
+        setTimeout(() => this.refreshStatus(), 1500);
+      },
+      error: (err: HttpErrorResponse) => { this.savingHours = false; this.fail(err, 'Could not save the hours.'); }
     });
   }
 

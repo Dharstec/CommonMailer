@@ -13,6 +13,7 @@
 const POSTGRESQLService = require('./POSTGRES');
 const whatsapp = require('./whatsapp');
 const { createPace, setting } = require('./campaignPace');
+const sendWindow = require('./sendWindow');
 const logger = require('./logger');
 
 const pace = createPace({
@@ -47,21 +48,26 @@ async function pause(campaignId, reason) {
     logger.warn('WhatsApp campaign paused automatically', { campaignId, reason });
 }
 
+/** This campaign's next turn: so many seconds from now, moved into its sending hours. */
+function turnAfter(campaign, seconds) {
+    return sendWindow.nextOpen(campaign.send_window, new Date(Date.now() + seconds * 1000));
+}
+
 async function scheduleNext(campaign) {
     await POSTGRESQLService.PostgresAny(
         `UPDATE wa_campaigns
-            SET next_send_at = now() + make_interval(secs => $2::double precision), retry_count = 0, status_reason = NULL
+            SET next_send_at = $2, retry_count = 0, status_reason = NULL
           WHERE id = $1 AND status = 'sending'`,
-        [campaign.id, pace.GAP_SECONDS]
+        [campaign.id, turnAfter(campaign, pace.GAP_SECONDS)]
     );
 }
 
 async function waitForNumber(campaign) {
+    const rows = await POSTGRESQLService.PostgresAny(`SELECT next_send_at FROM wa_pace WHERE tenant_id = $1`, [campaign.tenant_id]);
+    if (!rows.length) return;
     await POSTGRESQLService.PostgresAny(
-        `UPDATE wa_campaigns c SET next_send_at = p.next_send_at
-           FROM wa_pace p
-          WHERE c.id = $1 AND c.status = 'sending' AND p.tenant_id = c.tenant_id`,
-        [campaign.id]
+        `UPDATE wa_campaigns SET next_send_at = $2 WHERE id = $1 AND status = 'sending'`,
+        [campaign.id, sendWindow.nextOpen(campaign.send_window, new Date(rows[0].next_send_at))]
     );
 }
 
@@ -123,10 +129,10 @@ async function handleFailure(campaign, recipient, error) {
         await POSTGRESQLService.PostgresAny(
             `UPDATE wa_campaigns
                 SET retry_count = retry_count + 1,
-                    next_send_at = now() + make_interval(secs => $2::double precision),
+                    next_send_at = $2,
                     status_reason = $3
               WHERE id = $1 AND status = 'sending'`,
-            [campaign.id, seconds, `${reason} Retrying automatically.`]
+            [campaign.id, turnAfter(campaign, seconds), `${reason} Retrying automatically.`]
         );
         return;
     }
@@ -163,12 +169,18 @@ async function sendOne(campaign) {
         return 0;
     }
 
+    // Outside its sending hours: wait for the next opening, without using up a turn.
+    const opens = sendWindow.nextOpen(campaign.send_window);
+    if (opens.getTime() > Date.now() + 1000) {
+        await POSTGRESQLService.PostgresAny(`UPDATE wa_campaigns SET next_send_at = $2 WHERE id = $1 AND status = 'sending'`, [campaign.id, opens]);
+        return 0;
+    }
+
     const wait = await pace.dailyWait(campaign.tenant_id);
     if (wait) {
         await POSTGRESQLService.PostgresAny(
-            `UPDATE wa_campaigns SET next_send_at = now() + make_interval(secs => $2::double precision)
-              WHERE id = $1 AND status = 'sending'`,
-            [campaign.id, wait]
+            `UPDATE wa_campaigns SET next_send_at = $2 WHERE id = $1 AND status = 'sending'`,
+            [campaign.id, turnAfter(campaign, wait)]
         );
         return wait;
     }

@@ -471,6 +471,10 @@ lot is exactly what spam filters look for.
 - **The rest wait in the queue** and go out by themselves on the following days
   — 37 recipients take about 4 days. Leave the campaign running; a restart or a
   deploy does not lose its place.
+- **Sending hours**: a campaign can keep to working hours — 10:00–18:00, Monday
+  to Saturday in your time zone by default for new campaigns. Outside them the
+  queue waits, so a list started at 9 PM carries on at 10 AM. Change them any
+  time, even while sending, under **Report → Sending hours → Change**.
 
 Every email handed to the mail server counts, including ones it refused and
 retries. Retrying failed messages or deleting a campaign does not give the day
@@ -561,6 +565,8 @@ rating*); a Low rating gets the number limited. So:
   hours per number, the rest queued day by day — `WHATSAPP_GAP_MINUTES` and
   `WHATSAPP_DAILY_LIMIT` in `MailBackend/.env`. Raise them only while the quality
   stays Green, never above Meta's own limit (250 a day for a new number).
+- **Sending hours**, as for email: by default 10:00–18:00, Monday to Saturday
+  — a WhatsApp at night gets blocked far more often than one at work.
 - **A Low (red) quality rating pauses** every campaign of that number; it is
   checked while sending and before starting.
 - **Three failures in a row pause** the campaign; "spam limit", payment, token

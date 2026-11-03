@@ -6,10 +6,11 @@ import { Observable, Subscription, interval, of } from 'rxjs';
 import { WhatsappService } from '../../core/services/data.service';
 import { ToastService } from '../../core/services/toast.service';
 import {
-  ApiResponse, Pagination, WaAccountSummary, WaCampaign, WaConversation, WaImportSummary, WaRecipient, WaStats,
+  ApiResponse, Pagination, SendWindow, WaAccountSummary, WaCampaign, WaConversation, WaImportSummary, WaRecipient, WaStats,
   WaTemplate, WaTemplateDraft, WaTemplateComponent
 } from '../../core/models';
 import { prepareEmailImage } from '../campaigns/email-image';
+import { defaultWindow, describeWindow } from '../../shared/send-window.component';
 import {
   WA_LANGUAGES, WA_RECIPIENT_LABELS, WA_STATUS_LABELS, WaSlots, fill, limitOf, merge, qualityOf, sampleTemplate,
   slotsOf, variablesIn, waFormat, waRecipientClass, waStatusClass
@@ -42,7 +43,7 @@ function blankCampaign(): WaCampaign {
   return {
     tenant_id: null, name: '', status: 'draft',
     template_name: null, template_language: null, template_category: null, template_format: null, template_components: null,
-    variables: { header: {}, body: {}, buttons: {} }, header_media_url: null
+    variables: { header: {}, body: {}, buttons: {} }, header_media_url: null, send_window: defaultWindow()
   };
 }
 
@@ -111,6 +112,9 @@ export class WaEditorComponent implements OnInit, OnDestroy {
   openThread: string | null = null;
   replyText: Record<string, string> = {};
   replying = false;
+  hoursOpen = false;
+  hoursDraft: SendWindow | null = null;
+  savingHours = false;
 
   readonly statusLabels = WA_STATUS_LABELS;
   readonly statusClass = waStatusClass;
@@ -264,7 +268,8 @@ export class WaEditorComponent implements OnInit, OnDestroy {
       template_format: c.template_format,
       template_components: c.template_components,
       variables: c.variables,
-      header_media_url: (c.header_media_url || '').trim() || null
+      header_media_url: (c.header_media_url || '').trim() || null,
+      send_window: c.send_window ?? null
     };
   }
 
@@ -791,6 +796,28 @@ export class WaEditorComponent implements OnInit, OnDestroy {
 
   share(count: number): number {
     return this.stats.total ? (count / this.stats.total) * 100 : 0;
+  }
+
+  readonly describeWindow = describeWindow;
+
+  openHours(): void {
+    this.hoursDraft = this.campaign.send_window ? { ...this.campaign.send_window } : defaultWindow();
+    this.hoursOpen = !this.hoursOpen;
+  }
+
+  saveHours(): void {
+    if (!this.campaignId) return;
+    this.savingHours = true;
+    this.service.setSendWindow(this.campaignId, this.hoursDraft).subscribe({
+      next: (res) => {
+        this.savingHours = false;
+        this.hoursOpen = false;
+        this.campaign.send_window = res.data.send_window;
+        this.toast.success(res.message || 'Saved.');
+        setTimeout(() => this.load(), 1500);
+      },
+      error: (err: HttpErrorResponse) => { this.savingHours = false; this.fail(err, 'Could not save the hours.'); }
+    });
   }
 
   // --------------------------------------------------------------- replies --

@@ -3,7 +3,7 @@ const router = express.Router();
 const campaign = require('../models/campaign');
 const campaignPublic = require('../models/campaignPublic');
 const { verifyToken } = require('../middleware/auth');
-const { validate, campaignSchema, campaignPreviewSchema, unsubscribeAddSchema } = require('../helpers/validator');
+const { validate, campaignSchema, campaignPreviewSchema, unsubscribeAddSchema, sendWindowSchema } = require('../helpers/validator');
 
 /**
  * Uploads arrive as the raw file (Content-Type: application/octet-stream) with
@@ -62,5 +62,6 @@ router.post('/campaigns/:id/start', verifyToken, campaign.start);
 router.post('/campaigns/:id/pause', verifyToken, campaign.pause);
 router.post('/campaigns/:id/cancel', verifyToken, campaign.cancel);
 router.post('/campaigns/:id/retry-failed', verifyToken, campaign.retryFailed);
+router.put('/campaigns/:id/send-window', verifyToken, validate(sendWindowSchema), campaign.setSendWindow);
 
 module.exports = router;

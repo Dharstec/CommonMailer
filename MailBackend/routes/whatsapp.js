@@ -4,7 +4,7 @@ const whatsapp = require('../models/whatsapp');
 const webhook = require('../models/whatsappWebhook');
 const { verifyToken } = require('../middleware/auth');
 const {
-    validate, waAccountSchema, waCampaignSchema, waTestSchema, waTemplateSchema, waOptoutAddSchema, waReplySchema
+    validate, waAccountSchema, waCampaignSchema, waTestSchema, waTemplateSchema, waOptoutAddSchema, waReplySchema, sendWindowSchema
 } = require('../helpers/validator');
 
 /** Raw uploads, as for email campaigns: the file is the body, the name is in ?filename=. */
@@ -57,6 +57,7 @@ router.post('/wa-campaigns/:id/start', verifyToken, whatsapp.start);
 router.post('/wa-campaigns/:id/pause', verifyToken, whatsapp.pause);
 router.post('/wa-campaigns/:id/cancel', verifyToken, whatsapp.cancel);
 router.post('/wa-campaigns/:id/retry-failed', verifyToken, whatsapp.retryFailed);
+router.put('/wa-campaigns/:id/send-window', verifyToken, validate(sendWindowSchema), whatsapp.setSendWindow);
 
 router.get('/wa-campaigns/:id/conversations', verifyToken, whatsapp.conversations);
 router.post('/wa-campaigns/:id/conversations/:phone/reply', verifyToken, validate(waReplySchema), whatsapp.reply);

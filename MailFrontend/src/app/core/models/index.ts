@@ -229,6 +229,14 @@ export interface CampaignPace {
   last_24h: number;
 }
 
+/** Sending hours: days 0 = Sunday, times on the zone's own clock. null sends at any time. */
+export interface SendWindow {
+  start: string;
+  end: string;
+  days: number[];
+  tz: string;
+}
+
 export interface Campaign {
   id?: number;
   tenant_id: number | null;
@@ -250,6 +258,7 @@ export interface Campaign {
   import_summary?: ImportSummary | null;
 
   track_opens: boolean;
+  send_window?: SendWindow | null;
   scheduled_at?: string | null;
   next_send_at?: string | null;
   status_reason?: string | null;
@@ -453,6 +462,7 @@ export interface WaCampaign {
   template_components: WaTemplateComponent[] | null;
   variables: WaVariables;
   header_media_url: string | null;
+  send_window?: SendWindow | null;
   columns?: string[];
   import_summary?: WaImportSummary | null;
   scheduled_at?: string | null;

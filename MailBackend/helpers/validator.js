@@ -2,6 +2,7 @@
  * Joi schemas for the ADMIN api. (The public submit endpoint builds its schema
  * at runtime from the database instead — see helpers/dynamicValidator.js.)
  */
+const { validZone } = require('./sendWindow');
 const Joi = require('joi');
 const { DESIGN_KEYS } = require('./campaignRender');
 
@@ -192,6 +193,19 @@ const campaignContentSchema = Joi.object({
     footer_text: Joi.string().max(1000).allow('', null).label('Footer')
 }).default({});
 
+/** Sending hours (helpers/sendWindow.js), or null for any time. */
+const clock = Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).messages({ 'string.pattern.base': '{{#label}} must look like 10:00' });
+const sendWindowRule = Joi.object({
+    start: clock.required().label('From'),
+    end: clock.required().label('Until'),
+    days: Joi.array().items(Joi.number().integer().min(0).max(6)).min(1).max(7).unique().required().label('Days'),
+    tz: Joi.string().max(64).required().custom((value, helpers) => (validZone(value) ? value : helpers.error('any.invalid'))).label('Time zone')
+}).custom((value, helpers) => (value.start < value.end ? value : helpers.error('window.order')))
+    .messages({ 'window.order': 'Sending hours must end later in the day than they start' })
+    .allow(null).label('Sending hours');
+
+const sendWindowSchema = Joi.object({ send_window: sendWindowRule.required() });
+
 const campaignSchema = Joi.object({
     tenant_id: Joi.number().integer().required().label('Sending account'),
     name: noHtml().trim().min(2).max(150).required().label('Campaign name'),
@@ -208,7 +222,8 @@ const campaignSchema = Joi.object({
     custom_html: Joi.string().max(200000).allow('', null).label('Custom HTML'),
     // No speed or daily limit here: the pace is the mailbox's, set on the
     // server (helpers/campaignPace.js), and is not the panel's to loosen.
-    track_opens: Joi.boolean().default(true)
+    track_opens: Joi.boolean().default(true),
+    send_window: sendWindowRule.default(null)
 });
 
 /** Preview and test send take the unsaved editor state, so what you see is what you test. */
@@ -264,7 +279,8 @@ const waCampaignSchema = Joi.object({
         body: waSlotValues(/^[A-Za-z0-9_]+$/),
         buttons: waSlotValues(/^\d+$/)
     }).default({}),
-    header_media_url: Joi.string().trim().max(1000).uri({ scheme: ['http', 'https'] }).allow('', null).label('Header file link')
+    header_media_url: Joi.string().trim().max(1000).uri({ scheme: ['http', 'https'] }).allow('', null).label('Header file link'),
+    send_window: sendWindowRule.default(null)
 });
 
 /** The editor's unsaved state, for a test message. */
@@ -320,7 +336,7 @@ function validate(schema) {
 
 module.exports = {
     tenantSchema, smtpSchema, formSchema, fieldSchema, templateSchema,
-    campaignSchema, campaignPreviewSchema, unsubscribeAddSchema,
+    campaignSchema, campaignPreviewSchema, unsubscribeAddSchema, sendWindowSchema,
     waAccountSchema, waCampaignSchema, waTestSchema, waTemplateSchema, waOptoutAddSchema, waReplySchema,
     validate
 };
