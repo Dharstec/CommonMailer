@@ -172,6 +172,21 @@ app.use((err, req, res, next) => {
         await whatsappWorker.start();
         inbox.start();
 
+        // pm2 stops the app with SIGINT on every deploy and waits (kill_timeout
+        // in ecosystem.config.js). A message already on its way finishes first,
+        // so a deploy does not leave one "may or may not have been delivered".
+        let stopping = false;
+        const shutdown = async (signal) => {
+            if (stopping) return;
+            stopping = true;
+            console.log(`${signal}: letting messages on their way finish, then stopping`);
+            inbox.stop();
+            await Promise.all([campaignWorker.stop(25 * 1000), whatsappWorker.stop(25 * 1000)]);
+            process.exit(0);
+        };
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+
         app.listen(process.env.PORT, () => {
             console.log(`🚀 CommonMailer running on port ${process.env.PORT}`);
             console.log(`   API      ${process.env.PUBLIC_BASE_URL}`);

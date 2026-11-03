@@ -35,6 +35,7 @@ const INTERRUPTED = 'The server restarted while this message was being sent, so 
 
 let timer = null;
 let ticking = false;
+let stopping = false;
 // Customers with a message on its way: one at a time per number.
 const inFlight = new Set();
 
@@ -265,6 +266,7 @@ async function tick() {
             []
         );
         for (const campaign of due) {
+            if (stopping) break;
             if (inFlight.has(campaign.tenant_id)) continue;
             inFlight.add(campaign.tenant_id);
             sendNext(campaign)
@@ -283,6 +285,7 @@ async function tick() {
 /** Called once at boot, after migrations — same honesty about interrupted sends as the email sender. */
 async function start() {
     if (timer) return;
+    stopping = false;
     const interrupted = await POSTGRESQLService.PostgresAny(
         `UPDATE wa_recipients SET status = 'failed', error = $1 WHERE status = 'sending' RETURNING id`,
         [INTERRUPTED]
@@ -305,9 +308,16 @@ async function start() {
     timer = setInterval(tick, TICK_MS);
 }
 
-function stop() {
+/**
+ * Takes no new messages. With `waitMs`, resolves once the ones already on their
+ * way have finished (or the time is up), so a deploy does not cut one off.
+ */
+async function stop(waitMs = 0) {
+    stopping = true;
     if (timer) clearInterval(timer);
     timer = null;
+    const until = Date.now() + waitMs;
+    while (inFlight.size && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 200));
 }
 
 module.exports = { start, stop, tick, pace };

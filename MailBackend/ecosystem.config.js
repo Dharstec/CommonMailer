@@ -22,6 +22,10 @@ module.exports = {
         max_memory_restart: '400M',
         autorestart: true,
 
+        // On a deploy the app finishes an email already on its way before it
+        // exits (app.js, up to 25 s); pm2 must wait that long before killing it.
+        kill_timeout: 30000,
+
         // A crash loop means a real problem (bad .env, database unreachable).
         // Backing off stops pm2 hammering a dead Postgres, and min_uptime makes
         // "started then died" count as a failure rather than a success.
