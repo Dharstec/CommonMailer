@@ -56,7 +56,7 @@ const SAMPLE_RECIPIENT = {
     email: 'priya@example.com', first_name: 'Priya', last_name: 'Raman', name: 'Priya Raman', company: 'Acme Textiles'
 };
 
-const EMPTY_STATS = { total: 0, pending: 0, sending: 0, sent: 0, failed: 0, skipped: 0, opened: 0, unsubscribed: 0 };
+const EMPTY_STATS = { total: 0, pending: 0, sending: 0, sent: 0, failed: 0, skipped: 0, opened: 0, unsubscribed: 0, replied: 0 };
 
 /** Report filters. A Map, so a query string can never reach Object.prototype. */
 const RECIPIENT_FILTERS = new Map([
@@ -66,6 +66,7 @@ const RECIPIENT_FILTERS = new Map([
     ['failed', `r.status = 'failed'`],
     ['skipped', `r.status = 'skipped'`],
     ['opened', 'r.opened_at IS NOT NULL'],
+    ['replied', 'r.replied_at IS NOT NULL'],
     ['unsubscribed', 'r.unsubscribed_at IS NOT NULL']
 ]);
 
@@ -147,7 +148,8 @@ async function statsFor(ids) {
                 count(*) FILTER (WHERE status = 'failed')::int AS failed,
                 count(*) FILTER (WHERE status = 'skipped')::int AS skipped,
                 count(*) FILTER (WHERE opened_at IS NOT NULL)::int AS opened,
-                count(*) FILTER (WHERE unsubscribed_at IS NOT NULL)::int AS unsubscribed
+                count(*) FILTER (WHERE unsubscribed_at IS NOT NULL)::int AS unsubscribed,
+                count(*) FILTER (WHERE replied_at IS NOT NULL)::int AS replied
            FROM campaign_recipients
           WHERE campaign_id = ANY($1::int[])
           GROUP BY campaign_id`,
@@ -264,10 +266,13 @@ const getOne = async (req, res) => {
         const row = id && await loadCampaign(id);
         if (!row) return notFound(res);
 
-        const [stats, attachments, pace] = await Promise.all([
-            statsOf(id), listAttachments(id), campaignPace.status(row.tenant_id)
+        const [stats, attachments, pace, inbox] = await Promise.all([
+            statsOf(id), listAttachments(id), campaignPace.status(row.tenant_id),
+            POSTGRESQLService.PostgresAny(`SELECT error FROM campaign_inbox WHERE tenant_id = $1`, [row.tenant_id])
         ]);
-        res.json({ status: 'success', data: { ...present(row, stats, attachments), pace } });
+        // Why replies cannot be counted right now (helpers/inbox.js), or null.
+        const repliesError = row.started_at && inbox[0] ? inbox[0].error : null;
+        res.json({ status: 'success', data: { ...present(row, stats, attachments), pace, replies_error: repliesError } });
     } catch (error) {
         handleServerError(res, error, 'campaign.getOne');
     }
@@ -486,7 +491,7 @@ const listRecipients = async (req, res) => {
         params.push(limit, (page - 1) * limit);
         const data = await POSTGRESQLService.PostgresAny(
             `SELECT r.id, r.email, r.data, r.status, r.error, r.attempted_at, r.sent_at,
-                    r.opened_at, r.open_count, r.unsubscribed_at
+                    r.opened_at, r.open_count, r.unsubscribed_at, r.replied_at
                FROM campaign_recipients r
                ${where}
               ORDER BY r.id
@@ -555,13 +560,13 @@ const exportRecipients = async (req, res) => {
         if (!row) return notFound(res);
 
         const rows = await POSTGRESQLService.PostgresAny(
-            `SELECT email, data, status, error, sent_at, opened_at, open_count, unsubscribed_at
+            `SELECT email, data, status, error, sent_at, opened_at, open_count, unsubscribed_at, replied_at
                FROM campaign_recipients WHERE campaign_id = $1 ORDER BY id`,
             [id]
         );
 
         const dataKeys = [...new Set(rows.flatMap((r) => Object.keys(r.data || {})))].filter((k) => k !== 'email');
-        const header = ['email', 'status', 'sent_at', 'opened_at', 'opens', 'unsubscribed_at', 'error', ...dataKeys];
+        const header = ['email', 'status', 'sent_at', 'opened_at', 'opens', 'replied_at', 'unsubscribed_at', 'error', ...dataKeys];
 
         // A value starting with = + - @ is executed as a formula by Excel, so
         // prefix it with a quote before writing.
@@ -574,7 +579,7 @@ const exportRecipients = async (req, res) => {
         const lines = [header.map(cell).join(',')];
         for (const r of rows) {
             lines.push([
-                r.email, r.status, r.sent_at, r.opened_at, r.open_count, r.unsubscribed_at, r.error,
+                r.email, r.status, r.sent_at, r.opened_at, r.open_count, r.replied_at, r.unsubscribed_at, r.error,
                 ...dataKeys.map((k) => (r.data || {})[k])
             ].map(cell).join(','));
         }
@@ -1061,13 +1066,20 @@ const retryFailed = async (req, res) => {
             });
         }
 
+        // A bounced address stays failed: it is on the do-not-email list, and mailing it again costs reputation.
         const reset = await POSTGRESQLService.PostgresAny(
-            `UPDATE campaign_recipients SET status = 'pending', error = NULL, attempted_at = NULL
-              WHERE campaign_id = $1 AND status = 'failed'
-            RETURNING id`,
-            [id]
+            `UPDATE campaign_recipients r SET status = 'pending', error = NULL, attempted_at = NULL
+              WHERE r.campaign_id = $1 AND r.status = 'failed'
+                AND NOT EXISTS (SELECT 1 FROM campaign_unsubscribes u WHERE u.tenant_id = $2 AND u.email = r.email)
+            RETURNING r.id`,
+            [id, row.tenant_id]
         );
-        if (!reset.length) return res.status(400).json({ status: 'error', message: 'There are no failed messages to retry.' });
+        if (!reset.length) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'There are no failed messages to retry. Addresses that bounced or are on the do-not-email list are never retried.'
+            });
+        }
 
         if (row.status === 'completed') {
             await POSTGRESQLService.PostgresAny(

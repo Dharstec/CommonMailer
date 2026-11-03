@@ -43,7 +43,7 @@ const MAX_LIST_BYTES = 5 * 1024 * 1024;
 const BRAND_DEFAULT = '#4f46e5';
 
 const EMPTY_STATS: CampaignStats = {
-  total: 0, pending: 0, sending: 0, sent: 0, failed: 0, skipped: 0, opened: 0, unsubscribed: 0
+  total: 0, pending: 0, sending: 0, sent: 0, failed: 0, skipped: 0, opened: 0, unsubscribed: 0, replied: 0
 };
 
 /** Shown only until the server's own numbers arrive with the saved campaign; the server enforces its own. */
@@ -1144,6 +1144,7 @@ export class CampaignEditorComponent implements OnInit, OnDestroy {
           completed_at: data.completed_at,
           stats: data.stats,
           pace: data.pace,
+          replies_error: data.replies_error,
           editable: data.editable
         });
         if (this.tab === 'report' || this.tab === 'recipients') this.loadRecipients(true);

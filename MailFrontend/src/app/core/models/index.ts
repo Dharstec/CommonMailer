@@ -189,6 +189,8 @@ export interface CampaignStats {
   skipped: number;
   opened: number;
   unsubscribed: number;
+  /** People who wrote back — out-of-office answers are not counted. */
+  replied: number;
 }
 
 export interface CampaignAttachment {
@@ -271,6 +273,8 @@ export interface Campaign {
   attachments?: CampaignAttachment[];
   sender?: CampaignSender;
   pace?: CampaignPace;
+  /** Why replies cannot be counted right now — the mailbox could not be read. */
+  replies_error?: string | null;
   editable?: { content: boolean; recipients: boolean };
 }
 
@@ -285,6 +289,7 @@ export interface CampaignRecipient {
   opened_at?: string | null;
   open_count: number;
   unsubscribed_at?: string | null;
+  replied_at?: string | null;
 }
 
 export interface CampaignPreview {
@@ -302,7 +307,7 @@ export interface CampaignPreview {
 export interface CampaignUnsubscribe {
   id: number;
   email: string;
-  source: 'link' | 'one_click' | 'manual';
+  source: 'link' | 'one_click' | 'manual' | 'bounce';
   campaign_name?: string | null;
   created_at: string;
 }

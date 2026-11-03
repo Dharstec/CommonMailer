@@ -272,7 +272,7 @@
             <ul class="list-disc pl-4 space-y-1.5 text-xs text-slate-600">
               <li>From Excel: <span class="font-medium">File &rarr; Save As &rarr; CSV UTF-8</span>. Semicolon and tab separated files work too.</li>
               <li>Invalid addresses, typos like <span class="font-mono">gmial.com</span> and duplicates are skipped and listed below.</li>
-              <li>People who unsubscribed from this customer before are left out automatically.</li>
+              <li>People on this customer's do-not-email list (unsubscribed, or their address bounced) are left out automatically.</li>
             </ul>
           </div>
         </div>
@@ -304,7 +304,7 @@
             </div>
             <div class="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
               <p class="text-2xl font-bold text-slate-900">{{ importSummary.suppressed | number }}</p>
-              <p class="text-xs font-medium text-slate-600">Unsubscribed earlier</p>
+              <p class="text-xs font-medium text-slate-600">On the do-not-email list</p>
             </div>
           </div>
 
@@ -882,7 +882,7 @@
         </div>
       </div>
 
-      <div class="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <div class="grid gap-4 grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
         <div class="card card-body">
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Recipients</p>
           <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.total | number }}</p>
@@ -897,6 +897,10 @@
           <p class="text-xs text-slate-500 mt-1">{{ stats.opened | number }} {{ stats.opened === 1 ? 'person' : 'people' }}</p>
         </div>
         <div class="card card-body">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Replied</p>
+          <p class="text-3xl font-bold mt-2" [ngClass]="stats.replied ? 'text-emerald-600' : 'text-slate-900'">{{ stats.replied | number }}</p>
+        </div>
+        <div class="card card-body">
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Waiting</p>
           <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.pending + stats.sending | number }}</p>
         </div>
@@ -909,6 +913,10 @@
           <p class="text-3xl font-bold text-slate-900 mt-2">{{ stats.unsubscribed | number }}</p>
         </div>
       </div>
+
+      <p *ngIf="campaign.replies_error" class="rounded-lg px-4 py-3 text-sm border bg-amber-50 border-amber-200 text-amber-900">
+        Replies are not being counted: {{ campaign.replies_error }}
+      </p>
 
       <div class="card card-body">
         <div class="flex items-baseline justify-between text-sm mb-2">
@@ -965,6 +973,7 @@
           <option value="pending">Waiting</option>
           <option value="sent">Sent</option>
           <option value="opened">Opened</option>
+          <option value="replied">Replied</option>
           <option value="failed">Failed</option>
           <option value="skipped">Skipped</option>
           <option value="unsubscribed">Unsubscribed</option>
@@ -977,7 +986,7 @@
     <div *ngIf="recipientsLoading" class="p-6 text-sm text-slate-500">Loading...</div>
     <div *ngIf="!recipientsLoading && !recipients.length" class="p-8 text-center text-sm text-slate-500">Nobody matches.</div>
 
-    <div *ngIf="!recipientsLoading && recipients.length" class="overflow-x-auto">
+    <div *ngIf="!recipientsLoading && recipients.length" class="relative overflow-x-auto">
       <table class="w-full min-w-[52rem]">
         <thead class="bg-slate-50 border-b border-slate-200">
           <tr>
@@ -1005,6 +1014,9 @@
               {{ r.opened_at ? (r.opened_at | date:'d MMM, h:mm a') : '—' }}
               <span *ngIf="r.open_count > 1" class="block text-xs text-slate-500"
                     title="The time above is the first open">opened {{ r.open_count }} times</span>
+              <span *ngIf="r.replied_at" class="block mt-1">
+                <span class="badge-ok" [title]="'Replied ' + (r.replied_at | date:'d MMM, h:mm a')">Replied</span>
+              </span>
             </td>
             <td class="td text-right whitespace-nowrap">
               <button *ngIf="canRemove(r)" type="button" class="btn-ghost btn-sm !text-red-600"

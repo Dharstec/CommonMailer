@@ -537,7 +537,7 @@
     </div>
     <div *ngIf="recipientsLoading" class="p-6 text-sm text-slate-500">Loading...</div>
     <div *ngIf="!recipientsLoading && !recipients.length" class="p-8 text-center text-sm text-slate-500">Nobody here yet.</div>
-    <div *ngIf="!recipientsLoading && recipients.length" class="overflow-x-auto">
+    <div *ngIf="!recipientsLoading && recipients.length" class="relative overflow-x-auto">
       <table class="w-full min-w-[56rem]">
         <thead class="bg-slate-50 border-b border-slate-200">
           <tr>

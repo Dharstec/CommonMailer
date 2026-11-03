@@ -256,13 +256,13 @@ async function sendOne(campaign) {
     // Checked again here, not only at upload: they may have unsubscribed from
     // another campaign of the same customer since the list went in.
     const suppressed = await POSTGRESQLService.PostgresAny(
-        `SELECT 1 FROM campaign_unsubscribes WHERE tenant_id = $1 AND email = $2`,
+        `SELECT source FROM campaign_unsubscribes WHERE tenant_id = $1 AND email = $2`,
         [campaign.tenant_id, recipient.email]
     );
     if (suppressed.length) {
         await POSTGRESQLService.PostgresAny(
-            `UPDATE campaign_recipients SET status = 'skipped', error = 'Unsubscribed' WHERE id = $1`,
-            [recipient.id]
+            `UPDATE campaign_recipients SET status = 'skipped', error = $2 WHERE id = $1`,
+            [recipient.id, suppressed[0].source === 'bounce' ? 'Bounced before' : 'Unsubscribed']
         );
         return 0;
     }

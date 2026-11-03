@@ -394,7 +394,8 @@ recipient at a time, personalised, with attachments.
 4. **Review & send** — a checklist and a test email to yourself, then send now
    or schedule. The pace is fixed and safe — see *Sending pace* below.
 
-The **Report** then shows sent, opened, failed and unsubscribed — per person, live.
+The **Report** then shows sent, opened, replied, failed and unsubscribed — per
+person, live.
 
 ### The CSV
 
@@ -415,7 +416,8 @@ rajesh@globexsteel.com,Rajesh,Kumar,Globex Steel,Chennai
   Excel's "Unicode Text", and a bare list of addresses with no header all work.
 - Up to 20,000 rows and 5 MB. Invalid addresses, misspelt domains (`gmial.com`)
   and duplicates are skipped and listed with their row numbers.
-- Anyone who unsubscribed from that customer before is left out automatically.
+- Anyone on that customer's do-not-email list (unsubscribed, or their address
+  bounced) is left out automatically.
 - Emails go out in the order of the file, so put your best contacts first —
   at 10 a day, row 300 is a month away.
 
@@ -509,13 +511,29 @@ after weeks of clean sending, and a little at a time.
 - **Opens** are counted with a 1-pixel image (it can be switched off per
   campaign). They are approximate: Apple Mail loads images for privacy, and some
   inboxes block them.
+- **Replies** are counted from the sending mailbox itself: every 2 minutes the
+  API reads its inbox over IMAP (port 993) with the same username and password
+  it sends with, read-only — nothing is marked read, moved or deleted. A
+  message counts when it answers a campaign email, or comes from someone on the
+  list after they were emailed; the report then shows **Replied** next to their
+  open time, and the Replied count goes up. Out-of-office answers do not count.
+  Read the replies themselves in the mailbox as usual.
+- **Bounces** ("address not found" from the mail system) are read the same way:
+  that row becomes failed with the server's reason, and the address goes on the
+  do-not-email list, so no campaign — not even "Retry failed" — mails it again.
+- **IMAP must be allowed** for the mailbox. For Google Workspace it is on by
+  default; if the report says *Replies are not being counted*, turn it on in
+  admin.google.com → Apps → Google Workspace → Gmail → End User Access → POP and
+  IMAP access. The App Password used for sending works for reading too. After
+  a refused login the mailbox is left alone for 30 minutes, so a wrong password
+  never turns into hundreds of failed logins.
 
 ### Getting into the inbox
 
 1. Set up SPF, DKIM and DMARC on the customer's domain — the biggest single factor.
 2. Keep the slow pace above while the domain is new. Bounces ("delivery failed"
-   replies in the mailbox) hurt a new domain fast: put those addresses on the
-   **Do-not-email list**.
+   replies in the mailbox) hurt a new domain fast; they are put on the
+   **Do-not-email list** by themselves (see *Replies* above).
 3. Send only to a clean list — addresses you have seen work, not bought or guessed.
 4. Personalise the subject, always write preview text, and skip ALL CAPS and "FREE!!!".
 5. For first contact use the Personal design, and keep attachments small (a PDF

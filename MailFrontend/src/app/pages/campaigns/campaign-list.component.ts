@@ -52,7 +52,7 @@ export class CampaignListComponent implements OnInit, OnDestroy {
   readonly statuses = Object.keys(STATUS_LABELS) as CampaignStatus[];
   readonly statusClass = campaignStatusClass;
   readonly sourceLabels: Record<string, string> = {
-    link: 'Unsubscribe link', one_click: 'Inbox button', manual: 'Added by you'
+    link: 'Unsubscribe link', one_click: 'Inbox button', manual: 'Added by you', bounce: 'Bounced'
   };
 
   private refresh?: Subscription;

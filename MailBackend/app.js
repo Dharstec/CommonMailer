@@ -164,11 +164,13 @@ app.use((err, req, res, next) => {
         const { seedFirstAdmin } = require('./models/auth');
         const campaignWorker = require('./helpers/campaignWorker');
         const whatsappWorker = require('./helpers/whatsappWorker');
+        const inbox = require('./helpers/inbox');
 
         await runMigrations();
         await seedFirstAdmin();
         await campaignWorker.start();
         await whatsappWorker.start();
+        inbox.start();
 
         app.listen(process.env.PORT, () => {
             console.log(`🚀 CommonMailer running on port ${process.env.PORT}`);
