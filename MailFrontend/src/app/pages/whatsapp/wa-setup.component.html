@@ -132,7 +132,9 @@
               <span><strong>A mobile number that is not on WhatsApp right now.</strong> A new SIM is easiest. A number already on the
                 WhatsApp or WhatsApp Business app must be deleted from the app first — it cannot be in both places.</span></li>
             <li class="flex gap-3"><span class="text-emerald-600 font-bold">2</span>
-              <span><strong>A Facebook login</strong> to create a free Meta business account and app.</span></li>
+              <span><strong>A Facebook login</strong> to create a free Meta business account and app. No Facebook account? Create one at
+                facebook.com with your real name — it is only for logging in to Meta's business tools, nothing gets posted. It is needed for
+                this setup; after it, templates, campaigns and replies all work from this panel.</span></li>
             <li class="flex gap-3"><span class="text-emerald-600 font-bold">3</span>
               <span><strong>A payment card</strong>, added later in WhatsApp Manager. Meta charges a small fee per marketing message;
                 replies within 24 hours are free.</span></li>
@@ -146,7 +148,10 @@
         <!-- 2 -->
         <ng-container *ngIf="step === 1">
           <ol class="list-decimal pl-5 space-y-2">
-            <li>Open <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener" class="text-emerald-700 font-medium underline">developers.facebook.com/apps</a> and log in.</li>
+            <li>Open <a href="https://developers.facebook.com/" target="_blank" rel="noopener" class="text-emerald-700 font-medium underline">developers.facebook.com</a>
+              → <strong>Log in</strong> (top right) with your Facebook account → <strong>My Apps</strong>. The first time, Meta asks you to
+              <strong>Get started</strong> as a developer: accept and confirm your phone or email, once.
+              <span class="block text-xs text-slate-500 mt-0.5">Meta says "the link you followed may be broken"? You are not logged in yet — press Login at the top right.</span></li>
             <li><strong>Create app</strong> → choose the use case <strong>"Connect with customers through WhatsApp"</strong> (or type
               <strong>Business</strong>) → give it a name like "Dharstec WhatsApp" → pick or create your business portfolio.</li>
             <li>In the app, open <strong>WhatsApp → API Setup</strong>. Add your number under <strong>"Add phone number"</strong> and confirm the
