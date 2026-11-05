@@ -61,6 +61,14 @@ function nextOpen(window, from = new Date()) {
     return from;
 }
 
+/** "Fri 6 Nov, 10:00" on the window's own clock. */
+function formatAt(date, tz) {
+    const c = clockIn(date, tz || 'Asia/Kolkata');
+    const day = new Date(Date.UTC(c.y, c.m - 1, c.d));
+    const month = day.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' });
+    return `${DAY_NAMES[day.getUTCDay()]} ${c.d} ${month}, ${String(c.hh).padStart(2, '0')}:${String(c.mm).padStart(2, '0')}`;
+}
+
 /** "10:00–18:00, Mon–Sat" */
 function describe(window) {
     if (!window) return 'any time';
@@ -79,4 +87,4 @@ function validZone(tz) {
     }
 }
 
-module.exports = { nextOpen, describe, validZone, minutesOf };
+module.exports = { nextOpen, describe, formatAt, validZone, minutesOf };

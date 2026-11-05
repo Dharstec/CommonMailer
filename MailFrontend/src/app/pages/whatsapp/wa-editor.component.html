@@ -28,7 +28,7 @@
   <!-- =========================================================== STEPPER -->
   <div class="card px-4 py-3">
     <ol class="flex items-center gap-1 sm:gap-2 overflow-x-auto">
-      <li *ngFor="let s of steps; let i = index; let last = last" class="flex items-center gap-1 sm:gap-2 shrink-0">
+      <li *ngFor="let s of steps; let i = index; let last = last; trackBy: trackStep" class="flex items-center gap-1 sm:gap-2 shrink-0">
         <button type="button" (click)="go(s.key)"
                 class="flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-sm transition"
                 [ngClass]="step === s.key ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'">
@@ -335,6 +335,10 @@
             <input type="checkbox" class="mt-0.5 rounded border-slate-300" [(ngModel)]="consent"/>
             <span>These contacts know my business and would expect to hear from us on WhatsApp.</span>
           </label>
+          <p *ngIf="!openNow && (when === 'now' || campaign.status === 'paused')" class="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-sm text-sky-900">
+            It is outside the sending hours now ({{ describeWindow(campaign.send_window) }}), so the first message goes out when they open.
+            To send now, untick "Only send during working hours" above.
+          </p>
           <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700 w-full !py-3 !text-base"
                   [disabled]="!canStart || !consent || acting" (click)="campaign.status === 'paused' ? resume() : askStart()">
             {{ campaign.status === 'paused' ? 'Resume sending' : (when === 'later' ? 'Schedule campaign' : 'Start sending') }}
@@ -372,6 +376,7 @@
     <div *ngIf="campaign.status === 'sending'" class="rounded-lg px-4 py-3 text-sm border bg-emerald-50 border-emerald-200 text-emerald-900">
       Today: {{ campaign.pace?.today || 0 }} of {{ campaign.pace?.daily_limit || 0 }} messages from this number.
       <ng-container *ngIf="campaign.next_send_at"> Next message {{ campaign.next_send_at | date:'EEE d MMM, h:mm a' }}.</ng-container>
+      <ng-container *ngIf="!openNow"> It is outside the sending hours ({{ describeWindow(campaign.send_window) }}) — sending carries on by itself when they open.</ng-container>
     </div>
 
     <div *ngIf="['sending', 'paused', 'scheduled'].includes(campaign.status || '')" class="card card-body space-y-3">
@@ -700,6 +705,9 @@
         <ng-container *ngIf="when === 'later'"> from {{ scheduleAt | date:'EEEE d MMM, h:mm a' }}</ng-container>.
       </p>
       <p class="mt-2 text-sm text-slate-500">At {{ paceText }}, this takes {{ estimate }}. You can pause at any time.</p>
+      <p *ngIf="!openNow && when === 'now'" class="mt-2 text-sm text-sky-800">
+        It is outside the sending hours now ({{ describeWindow(campaign.send_window) }}) — the first message goes out when they open.
+      </p>
       <div class="mt-6 flex justify-end gap-2">
         <button type="button" class="btn-ghost" (click)="confirmStartOpen = false">Not yet</button>
         <button type="button" class="btn-primary !bg-emerald-600 hover:!bg-emerald-700" [disabled]="acting" (click)="start()">

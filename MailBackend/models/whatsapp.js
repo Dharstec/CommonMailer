@@ -813,10 +813,16 @@ const start = async (req, res) => {
                 scheduledAt ? 'scheduled' : 'sending', scheduledAt]
         );
         logger.info(scheduledAt ? 'WhatsApp campaign scheduled' : 'WhatsApp campaign started', { id, contacts: stats.pending, by: req.email });
+        // Started at night with working hours set, nothing goes out until morning: say so, not "has started".
+        const opens = sendWindow.nextOpen(row.send_window);
+        const later = !scheduledAt && opens.getTime() > Date.now() + 60 * 1000;
         res.json({
             status: 'success',
-            message: scheduledAt ? 'Campaign scheduled.' : `Sending to ${stats.pending} contact(s) has started — ${pace.describe()} from this number`
-                + `${row.send_window ? `, ${sendWindow.describe(row.send_window)}` : ''}.`
+            message: scheduledAt ? 'Campaign scheduled.'
+                : later ? `Started for ${stats.pending} contact(s). It is outside the sending hours now (${sendWindow.describe(row.send_window)}), `
+                    + `so the first message goes out ${sendWindow.formatAt(opens, row.send_window.tz)}. To send now, change the sending hours.`
+                    : `Sending to ${stats.pending} contact(s) has started — ${pace.describe()} from this number`
+                        + `${row.send_window ? `, ${sendWindow.describe(row.send_window)}` : ''}.`
         });
     } catch (error) {
         handleServerError(res, error, 'whatsapp.start');

@@ -15,6 +15,20 @@ export function defaultWindow(): SendWindow {
   return { start: '10:00', end: '18:00', days: [1, 2, 3, 4, 5, 6], tz: ZONE_NAMES[tz] || tz };
 }
 
+/** Whether the hours are open at this moment, on their own clock. No hours means always. */
+export function isOpenNow(w: SendWindow | null | undefined, at = new Date()): boolean {
+  if (!w) return true;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: w.tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(at);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    const now = Number(get('hour')) * 60 + Number(get('minute'));
+    const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+    return w.days.includes(DAY_NAMES.indexOf(get('weekday'))) && now >= minutes(w.start) && now < minutes(w.end);
+  } catch {
+    return true;
+  }
+}
+
 /** "10:00–18:00, Mon–Sat" — the server's wording (helpers/sendWindow.js). */
 export function describeWindow(w: SendWindow | null | undefined): string {
   if (!w) return 'any time';

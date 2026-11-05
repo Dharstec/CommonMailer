@@ -10,7 +10,7 @@ import {
   WaTemplate, WaTemplateDraft, WaTemplateComponent
 } from '../../core/models';
 import { prepareEmailImage } from '../campaigns/email-image';
-import { defaultWindow, describeWindow } from '../../shared/send-window.component';
+import { defaultWindow, describeWindow, isOpenNow } from '../../shared/send-window.component';
 import {
   WA_LANGUAGES, WA_RECIPIENT_LABELS, WA_STATUS_LABELS, WaSlots, fill, limitOf, merge, qualityOf, sampleTemplate,
   slotsOf, variablesIn, waFormat, waRecipientClass, waStatusClass
@@ -126,9 +126,11 @@ export class WaEditorComponent implements OnInit, OnDestroy {
   // Kept out of the template: Angular reads a literal {{ in HTML as interpolation.
   readonly exampleMerge = '{{first_name|Sir/Madam}}';
   readonly bodyPlaceholder = 'Hello {{1}}, …';
+  readonly trackStep = (_: number, s: { key: Step }): Step => s.key;
 
   private poll?: Subscription;
   private replyPoll?: Subscription;
+  private slotsFor: { components: WaCampaign['template_components']; slots: WaSlots } | null = null;
 
   constructor(
     private service: WhatsappService,
@@ -169,10 +171,21 @@ export class WaEditorComponent implements OnInit, OnDestroy {
   get canEditList(): boolean { return Boolean(this.campaign.editable?.recipients); }
   get account(): WaAccountSummary | undefined { return this.accounts.find((a) => a.tenant_id === this.campaign.tenant_id); }
   get connected(): WaAccountSummary[] { return this.accounts.filter((a) => a.connected); }
-  get slots(): WaSlots { return slotsOf(this.campaign.template_components); }
+  /**
+   * Worked out once per template, not on every check: the fill-in boxes are
+   * listed from it, and a fresh list each time rebuilds them, whose form
+   * controls then ask for another check — a loop that froze the page.
+   */
+  get slots(): WaSlots {
+    const components = this.campaign.template_components;
+    if (!this.slotsFor || this.slotsFor.components !== components) this.slotsFor = { components, slots: slotsOf(components) };
+    return this.slotsFor.slots;
+  }
   get chosen(): WaTemplate | undefined {
     return this.templates.find((t) => t.name === this.campaign.template_name && t.language === this.campaign.template_language);
   }
+  /** False at night or on Sunday with working hours set: nothing goes out until they open. */
+  get openNow(): boolean { return isOpenNow(this.campaign.send_window); }
   get needsMedia(): boolean { return ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(this.slots.headerFormat || ''); }
   get columns(): string[] {
     const cols = this.campaign.columns?.length ? this.campaign.columns : ['first_name', 'company'];

@@ -255,8 +255,8 @@ const EXPLANATIONS = {
     131051: 'This kind of message cannot be sent.',
     131052: 'Meta could not download the header file. Check the link opens in a browser.',
     131053: 'Meta could not use the header file. Use a JPG or PNG under 5 MB, or a PDF under 100 MB.',
-    131056: 'Too many messages to this person in a short time. Retrying later.',
-    130429: 'WhatsApp is receiving messages too fast from this number. Retrying later.',
+    131056: 'Too many messages to this person in a short time.',
+    130429: 'WhatsApp is receiving messages too fast from this number.',
     132000: 'The template expects a different number of variables. Choose the template again in step 2.',
     132001: 'Meta has no approved template with this name in this language. Check its status in step 2.',
     132005: 'A variable made the message too long. Shorten the text that fills it.',
@@ -271,7 +271,7 @@ const EXPLANATIONS = {
 
 function explain(error) {
     const code = error && error.code;
-    if (code === 'NETWORK') return 'Could not reach WhatsApp. Check the server\'s internet connection; sending will retry.';
+    if (code === 'NETWORK') return 'Could not reach WhatsApp. Check the server\'s internet connection.';
     const known = EXPLANATIONS[code];
     const meta = [error && error.message, error && error.details].filter(Boolean).join(' — ');
     if (known) return known;
